@@ -50,7 +50,7 @@
 <div id="root"></div>
 
 <script type="module">
-import React, { useState, useMemo } from "https://esm.sh/react@18.3.1";
+import React, { useState, useMemo, useEffect } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 
 const h = React.createElement;
@@ -270,26 +270,29 @@ function Card({ selected, onClick, children, compact }) {
 
 // ---------- STEPS ----------
 function Intro({ onStart }) {
-  return h("div", { className: "max-w-3xl mx-auto text-center fade-in py-6 md:py-12" },
-    h("h1", { className: "font-display text-[2.75rem] sm:text-6xl md:text-7xl font-bold tracking-tight leading-[0.98] mb-10 text-brand" },
+  return h("div", { className: "max-w-3xl mx-auto text-center fade-in py-4 sm:py-8 md:py-12" },
+    h("h1", { className: "font-display text-[2rem] xs:text-[2.4rem] sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.02] sm:leading-[0.98] mb-6 sm:mb-8 md:mb-10 text-brand break-words" },
       "You're Paying for Your Tech. But Is It Paying You Back?"
     ),
-    h("p", { className: "text-base md:text-lg text-cream/85 mb-5 leading-relaxed max-w-2xl mx-auto" },
+    h("p", { className: "text-sm sm:text-base md:text-lg text-cream/85 mb-4 sm:mb-5 leading-relaxed max-w-2xl mx-auto" },
       "Tech on Toast helps hospitality operators make smarter tech decisions. We assess your current stack, highlight gaps and inefficiencies, and show you what's possible, without the jargon, the bias or the hard sell."
     ),
-    h("p", { className: "text-base md:text-lg text-cream/85 mb-8 leading-relaxed max-w-2xl mx-auto" },
+    h("p", { className: "text-sm sm:text-base md:text-lg text-cream/85 mb-6 sm:mb-8 leading-relaxed max-w-2xl mx-auto" },
       "Get your free Stack Review in under a minute and see where your systems are helping… and where they're holding you back."
     ),
-    h("p", { className: "text-sm text-cream/70 mb-8 italic" },
+    h("p", { className: "text-sm text-cream/70 mb-6 sm:mb-8 italic" },
       "We speak operator, not code."
     ),
-    h("div", { className: "flex flex-col sm:flex-row items-center justify-center gap-3" },
-      h(PrimaryBtn, { onClick: onStart }, "Start my Stack Review →"),
+    h("div", { className: "flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 px-2 sm:px-0" },
+      h("button", {
+        onClick: onStart,
+        className: "w-full sm:w-auto px-6 py-3 rounded-full bg-brand text-ink font-semibold hover:bg-brandDark transition shadow-sm",
+      }, "Start my Stack Review →"),
       h("a", {
         href: "https://www.techontoast.community/marketplace",
         target: "_blank",
         rel: "noopener",
-        className: "px-6 py-3 rounded-full font-semibold border border-brand/40 text-cream hover:border-brand hover:text-brand transition",
+        className: "w-full sm:w-auto text-center px-6 py-3 rounded-full font-semibold border border-brand/40 text-cream hover:border-brand hover:text-brand transition",
       }, "Visit Marketplace →"),
     )
   );
@@ -1101,6 +1104,15 @@ function App() {
 
   const showProgress = step >= VENUE_STEP && step <= GATE_STEP;
 
+  // Scroll back to top every time the step or deep-review question changes
+  // so users don't land halfway down the next screen.
+  useEffect(() => {
+    try { window.scrollTo({ top: 0, behavior: "instant" }); } catch { window.scrollTo(0, 0); }
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: "tot-stack-review-scroll-to-top" }, "*");
+    }
+  }, [step, deepStep]);
+
   return h("div", { className: "min-h-screen" },
     h("header", { className: "border-b border-line bg-brandDeep/90 backdrop-blur sticky top-0 z-10" },
       h("div", { className: "max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" },
@@ -1121,7 +1133,7 @@ function App() {
       )
     ),
 
-    h("main", { className: "max-w-3xl mx-auto px-5 py-10 md:py-14" },
+    h("main", { className: "max-w-3xl mx-auto px-4 sm:px-5 py-6 sm:py-10 md:py-14" },
       showProgress && h("div", { className: "mb-8" }, h(Progress, { step: progressStep, total: progressTotal })),
 
       step === 0 && h(Intro, { onStart: () => setStep(VENUE_STEP) }),
