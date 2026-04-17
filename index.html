@@ -577,7 +577,7 @@ function ScoreRing({ score }) {
   );
 }
 
-function Report({ venue, stack, lead, onReset }) {
+function Report({ venue, stack, lead, onReset, onStartDeep }) {
   const { segment, bench, coverage, gaps, switches, matchScore, totalGbp, totalHrs, gapGbp, switchGbp } =
     useMemo(() => buildReport({ venue, stack }), [venue, stack]);
 
@@ -754,22 +754,29 @@ function Report({ venue, stack, lead, onReset }) {
       })
     ),
 
-    // CTA
-    h("div", { className: "rounded-2xl bg-canvas border border-line p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4" },
+    // Deep audit CTA — THE key stage-2 entry point
+    h("div", { className: "rounded-3xl bg-brand text-ink p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-[0_8px_32px_-10px_rgba(130,233,20,0.45)]" },
       h("div", null,
-        h("div", { className: "font-display text-lg font-bold" }, "Want help closing these gaps?"),
-        h("div", { className: "text-sm text-muted" }, "We'll intro you to 2–3 vetted Tech on Toast partners for your priority gaps. No sales spam, just the right shortlist.")
+        h("div", { className: "text-xs uppercase tracking-wider font-bold mb-1" }, "Go deeper"),
+        h("div", { className: "font-display text-xl md:text-2xl font-bold mb-1" }, "Unlock the full audit"),
+        h("div", { className: "text-sm opacity-80 max-w-md" },
+          "Six more questions. We pinpoint your single biggest lever, check contract timing, and line up vetted partners for the gaps worth fixing first."
+        )
       ),
-      h("div", { className: "flex gap-2" },
+      h("div", { className: "flex gap-2 shrink-0" },
         h("button", {
-          className: "px-4 py-2.5 rounded-full border border-line text-sm font-medium hover:border-ink",
-          onClick: onReset,
-        }, "Start over"),
-        h("a", {
-          href: `mailto:hello@techontoast.community?subject=My%20Stack%20Benchmark%20Follow-up&body=Hi%20team%20%E2%80%94%20I'd%20love%20an%20intro%20on%20my%20top%20gaps%20from%20the%20benchmark.`,
-          className: "px-5 py-2.5 rounded-full bg-brand text-ink text-sm font-semibold hover:bg-brandDark",
-        }, "Book a call →"),
+          onClick: onStartDeep,
+          className: "px-6 py-3 rounded-full bg-ink text-cream font-semibold hover:bg-brandDeep transition whitespace-nowrap",
+        }, "Start deep audit →")
       )
+    ),
+
+    h("div", { className: "mt-6 flex items-center justify-between text-sm" },
+      h("button", {
+        className: "text-muted hover:text-cream underline",
+        onClick: onReset,
+      }, "Start over"),
+      h("span", { className: "text-muted" }, "Not ready? Come back any time.")
     ),
 
     h("div", { className: "text-center text-xs text-muted mt-8" },
@@ -778,12 +785,183 @@ function Report({ venue, stack, lead, onReset }) {
   );
 }
 
+// ---------- STAGE 2: DEEP REVIEW ----------
+const DEEP_QUESTIONS = [
+  {
+    id: "pain_category",
+    prompt: "Which part of your stack is hurting most right now?",
+    help: "Pick the category that's bleeding money or time.",
+    type: "single",
+    options: [
+      { id: "pos", label: "EPOS" },
+      { id: "payments", label: "Payments" },
+      { id: "workforce", label: "Workforce" },
+      { id: "inventory", label: "Inventory" },
+      { id: "loyalty", label: "Loyalty / CRM" },
+      { id: "learning", label: "Learning" },
+      { id: "everything", label: "Everything hurts" },
+      { id: "unsure", label: "Not sure yet" },
+    ],
+  },
+  {
+    id: "renewal_window",
+    prompt: "Any major tech contracts up for renewal soon?",
+    help: "POS, payments, workforce, loyalty. When's your next big lock-in decision?",
+    type: "single",
+    options: [
+      { id: "<3m", label: "In the next 3 months" },
+      { id: "3-12m", label: "3 to 12 months" },
+      { id: "12m+", label: "More than a year out" },
+      { id: "unsure", label: "I'd have to check" },
+    ],
+  },
+  {
+    id: "tech_spend_band",
+    prompt: "Rough annual tech spend across your stack?",
+    help: "Ballpark is fine. This is just so we can match the right partners.",
+    type: "single",
+    options: [
+      { id: "<5k", label: "Under £5k" },
+      { id: "5-20k", label: "£5k to £20k" },
+      { id: "20-50k", label: "£20k to £50k" },
+      { id: "50-100k", label: "£50k to £100k" },
+      { id: "100k+", label: "£100k or more" },
+      { id: "skip", label: "Prefer not to say" },
+    ],
+  },
+  {
+    id: "decision_maker",
+    prompt: "Who signs off on tech decisions?",
+    help: "So we pitch at the right level.",
+    type: "single",
+    options: [
+      { id: "me", label: "Me" },
+      { id: "ops-fd", label: "Our Ops or FD" },
+      { id: "owner", label: "Founder or owner" },
+      { id: "varies", label: "Varies by category" },
+      { id: "other", label: "Someone else" },
+    ],
+  },
+  {
+    id: "growth_goal",
+    prompt: "What's your #1 tech priority for the next 12 months?",
+    help: "Pick one. There's a text box at the end if yours isn't listed.",
+    type: "single_with_other",
+    options: [
+      { id: "cost_reduction", label: "Cut costs out of the business" },
+      { id: "labour_efficiency", label: "Fix labour and productivity" },
+      { id: "guest_loyalty", label: "Grow repeat visits and guest data" },
+      { id: "digital_ordering", label: "Nail digital ordering / delivery" },
+      { id: "new_sites", label: "Launch new sites cleanly" },
+      { id: "data_reporting", label: "Finally trust my numbers" },
+    ],
+  },
+  {
+    id: "open_to_intro",
+    prompt: "Open to a 20-minute intro with vetted partners for your gaps?",
+    help: "No pressure. We only introduce you to the highest-rated operators.",
+    type: "single",
+    options: [
+      { id: "yes", label: "✅ Yes, set one up" },
+      { id: "maybe", label: "📨 Maybe, email me details first" },
+      { id: "no", label: "❌ Not right now" },
+    ],
+  },
+];
+
+function DeepQuestion({ q, answer, onAnswer, onOtherChange, otherValue, onNext, onBack, canBack, step, total }) {
+  const selected = answer;
+  const canNext = q.type === "single_with_other"
+    ? (!!selected || !!(otherValue && otherValue.trim()))
+    : !!selected;
+  return h("div", { className: "fade-in max-w-2xl mx-auto" },
+    h("div", { className: "flex items-center justify-between text-xs text-muted mb-3" },
+      h("span", { className: "uppercase tracking-wider font-semibold text-brand" }, "Deep audit"),
+      h("span", null, `Question ${step} of ${total}`)
+    ),
+    h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2 text-cream" }, q.prompt),
+    h("p", { className: "text-muted mb-6" }, q.help),
+
+    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3 mb-4" },
+      q.options.map(opt => h(Card, {
+        key: opt.id,
+        selected: selected === opt.id,
+        onClick: () => onAnswer(opt.id),
+        compact: true,
+      },
+        h("div", { className: "flex items-center justify-between gap-2" },
+          h("span", { className: "font-medium" }, opt.label),
+          selected === opt.id && h("span", { className: "text-ink" }, "✓")
+        )
+      ))
+    ),
+
+    q.type === "single_with_other" && h("div", { className: "rounded-2xl border border-dashed border-line bg-brandShade/60 p-4 mb-4" },
+      h("label", { className: "block text-sm font-semibold mb-2 text-cream" }, "Or tell us in your own words"),
+      h("input", {
+        type: "text",
+        value: otherValue || "",
+        onChange: e => onOtherChange(e.target.value),
+        placeholder: "e.g. prepping for exit, opening abroad, launching a dark-kitchen brand…",
+        className: "w-full px-4 py-2.5 rounded-xl border border-line focus:border-brand outline-none text-sm bg-brandDeep text-cream placeholder:text-muted",
+      }),
+    ),
+
+    h("div", { className: "mt-8 flex items-center justify-between" },
+      canBack ? h(GhostBtn, { onClick: onBack }, "← Back") : h("span"),
+      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, step === total ? "Submit →" : "Continue →")
+    )
+  );
+}
+
+function DeepThanks({ onReset, lead }) {
+  return h("div", { className: "fade-in max-w-xl mx-auto text-center py-10" },
+    h("div", { className: "text-6xl mb-4" }, "🍞"),
+    h("h2", { className: "font-display text-3xl md:text-4xl font-bold mb-3 text-brand" },
+      lead.firstName ? `Thanks, ${lead.firstName}.` : "Thanks."
+    ),
+    h("p", { className: "text-lg text-cream/85 mb-2" },
+      "You're in. We've flagged your priorities to the Tech on Toast team."
+    ),
+    h("p", { className: "text-base text-muted mb-8" },
+      "Expect an email within 2 working days with your shortlist. No sales spam, no hard sells. Operator to operator."
+    ),
+    h("button", {
+      onClick: onReset,
+      className: "px-5 py-2.5 rounded-full border border-line text-cream text-sm font-medium hover:border-brand hover:text-brand transition",
+    }, "Start over")
+  );
+}
+
+async function postDeepReview(payload, anonKey, baseUrl) {
+  const res = await fetch(`${baseUrl}/rest/v1/deep_reviews`, {
+    method: "POST",
+    headers: {
+      "apikey": anonKey,
+      "Authorization": `Bearer ${anonKey}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase ${res.status}: ${text || res.statusText}`);
+  }
+  return true;
+}
+
 // ---------- APP ----------
 function App() {
   const [step, setStep] = useState(0);
   const [venue, setVenue] = useState({ type: "", sites: "" });
   const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
   const [lead, setLead] = useState({ firstName: "", email: "", company: "", consent: false, hp: "" });
+
+  // Stage 2 state: null (not started) | 0..5 (question index) | "submitting" | "thanks"
+  const [deepStep, setDeepStep] = useState(null);
+  const [deepAnswers, setDeepAnswers] = useState({ pain_category: "", renewal_window: "", tech_spend_band: "", decision_maker: "", growth_goal: "", growth_goal_other: "", open_to_intro: "" });
+  const [deepSubmit, setDeepSubmit] = useState({ status: "idle", error: "" });
 
   const totalCategorySteps = CATEGORIES.length;
   const VENUE_STEP = 1;
@@ -886,6 +1064,39 @@ function App() {
     setStep(0); setVenue({ type: "", sites: "" }); setStack({});
     setLead({ firstName: "", email: "", company: "", consent: false, hp: "" });
     setSubmitState({ status: "idle", error: "" });
+    setDeepStep(null);
+    setDeepAnswers({ pain_category: "", renewal_window: "", tech_spend_band: "", decision_maker: "", growth_goal: "", growth_goal_other: "", open_to_intro: "" });
+    setDeepSubmit({ status: "idle", error: "" });
+  }
+
+  async function submitDeepReview() {
+    const r = buildReport({ venue, stack });
+    const payload = {
+      first_name: lead.firstName,
+      email: lead.email,
+      company: lead.company,
+      score: r.matchScore,
+      total_gbp_per_year: r.totalGbp,
+      pain_category: deepAnswers.pain_category || null,
+      renewal_window: deepAnswers.renewal_window || null,
+      tech_spend_band: deepAnswers.tech_spend_band || null,
+      decision_maker: deepAnswers.decision_maker || null,
+      growth_goal: deepAnswers.growth_goal || null,
+      growth_goal_other: deepAnswers.growth_goal_other || null,
+      open_to_intro: deepAnswers.open_to_intro || null,
+    };
+    setDeepSubmit({ status: "submitting", error: "" });
+    try {
+      if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith("REPLACE_")) {
+        await postDeepReview(payload, SUPABASE_ANON_KEY, SUPABASE_URL);
+      } else {
+        console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set, skipping deep review submission");
+      }
+      setDeepSubmit({ status: "idle", error: "" });
+      setDeepStep("thanks");
+    } catch (err) {
+      setDeepSubmit({ status: "error", error: err.message || "Submission failed" });
+    }
   }
 
   const showProgress = step >= VENUE_STEP && step <= GATE_STEP;
@@ -941,13 +1152,40 @@ function App() {
         submitState: submitState,
       }),
 
-      step === REPORT_STEP && h(Report, { venue, stack, lead, onReset: reset }),
+      step === REPORT_STEP && deepStep === null && h(Report, { venue, stack, lead, onReset: reset, onStartDeep: () => setDeepStep(0) }),
+
+      step === REPORT_STEP && typeof deepStep === "number" && (() => {
+        const q = DEEP_QUESTIONS[deepStep];
+        const isLast = deepStep === DEEP_QUESTIONS.length - 1;
+        return h("div", null,
+          deepSubmit.status === "error" && h("div", {
+            className: "max-w-2xl mx-auto mb-4 rounded-xl bg-red-950/60 border border-red-800 text-red-200 text-sm p-3",
+          }, "Sorry, couldn't save that. ", deepSubmit.error || "Please try again."),
+          h(DeepQuestion, {
+            q,
+            answer: deepAnswers[q.id],
+            otherValue: q.id === "growth_goal" ? deepAnswers.growth_goal_other : undefined,
+            onAnswer: (v) => setDeepAnswers(a => ({ ...a, [q.id]: v })),
+            onOtherChange: (v) => setDeepAnswers(a => ({ ...a, growth_goal_other: v })),
+            step: deepStep + 1,
+            total: DEEP_QUESTIONS.length,
+            onBack: () => setDeepStep(deepStep - 1),
+            canBack: deepStep > 0,
+            onNext: () => {
+              if (isLast) submitDeepReview();
+              else setDeepStep(deepStep + 1);
+            },
+          })
+        );
+      })(),
+
+      step === REPORT_STEP && deepStep === "thanks" && h(DeepThanks, { onReset: reset, lead }),
     ),
 
     h("footer", { className: "max-w-5xl mx-auto px-5 py-10 text-center text-xs text-muted space-y-1" },
       h("div", null,
         "Built by ",
-        h("a", { href: "https://www.techontoast.community", target: "_blank", rel: "noopener", className: "underline hover:text-ink" }, "Tech on Toast"),
+        h("a", { href: "https://www.techontoast.community", target: "_blank", rel: "noopener", className: "underline hover:text-brand" }, "Tech on Toast"),
         ", the UK hospitality tech community."
       ),
       h("div", null, "We speak operator, not code.")
