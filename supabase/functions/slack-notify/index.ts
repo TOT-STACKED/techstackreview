@@ -42,16 +42,21 @@ const segmentLabel = (s?: string) => ({
 function buildSubmissionMessage(r: any) {
   const gaps = Array.isArray(r.gap_categories) ? r.gap_categories : [];
   const gapText = gaps.length ? gaps.join(", ") : "_complete stack, no peer gaps_";
+  const fullName = [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || "—";
+  const phoneDisplay = r.phone_number
+    ? `<tel:${String(r.phone_number).replace(/\s+/g, "")}|${r.phone_number}>`
+    : "—";
   return {
-    text: `New Stack Review submission from ${r.first_name ?? "someone"} at ${r.company ?? "an unnamed venue"}`,
+    text: `New Stack Review submission from ${fullName} at ${r.company ?? "an unnamed venue"}`,
     blocks: [
       { type: "header", text: { type: "plain_text", text: "🍞 New Stack Review submission", emoji: true } },
       {
         type: "section",
         fields: [
-          { type: "mrkdwn", text: `*Name*\n${r.first_name ?? "—"}` },
+          { type: "mrkdwn", text: `*Name*\n${fullName}` },
           { type: "mrkdwn", text: `*Company*\n${r.company ?? "—"}` },
           { type: "mrkdwn", text: `*Email*\n${r.email ? `<mailto:${r.email}|${r.email}>` : "—"}` },
+          { type: "mrkdwn", text: `*Phone*\n${phoneDisplay}` },
           { type: "mrkdwn", text: `*Segment*\n${segmentLabel(r.segment)} · ${r.sites ?? "?"} sites` },
         ],
       },
@@ -98,16 +103,21 @@ const introLabel = (v?: string) => ({
 
 function buildDeepReviewMessage(r: any) {
   const growth = [r.growth_goal, r.growth_goal_other].filter(Boolean).join(" · ");
+  const fullName = [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || "—";
+  const phoneDisplay = r.phone_number
+    ? `<tel:${String(r.phone_number).replace(/\s+/g, "")}|${r.phone_number}>`
+    : "—";
   return {
-    text: `🔥 Sales-qualified: ${r.first_name ?? "someone"} at ${r.company ?? "an unnamed venue"}`,
+    text: `🔥 Sales-qualified: ${fullName} at ${r.company ?? "an unnamed venue"}`,
     blocks: [
       { type: "header", text: { type: "plain_text", text: "🔥 Sales-qualified Stack Review", emoji: true } },
       {
         type: "section",
         fields: [
-          { type: "mrkdwn", text: `*Name*\n${r.first_name ?? "—"}` },
+          { type: "mrkdwn", text: `*Name*\n${fullName}` },
           { type: "mrkdwn", text: `*Company*\n${r.company ?? "—"}` },
           { type: "mrkdwn", text: `*Email*\n${r.email ? `<mailto:${r.email}|${r.email}>` : "—"}` },
+          { type: "mrkdwn", text: `*Phone*\n${phoneDisplay}` },
           { type: "mrkdwn", text: `*Stage 1 upside*\n${fmtGBP(Number(r.total_gbp_per_year) || 0)} · score ${r.score ?? "—"}/100` },
         ],
       },
@@ -164,15 +174,16 @@ async function syncToStackcollect(r: any) {
     "Content-Type": "application/json",
   };
 
+  const contactName = [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || null;
   const biz = {
     business_name:        r.company ?? null,
     industry:             "Hospitality",
     size:                 SIZE_LABEL[r.sites] ?? r.sites ?? null,
     location:             null,
-    contact_name:         r.first_name ?? null,
+    contact_name:         contactName,
     contact_email:        r.email ?? null,
     role:                 null,
-    phone_number:         null,
+    phone_number:         r.phone_number ?? null,
     number_of_locations:  SIZE_LABEL[r.sites] ?? r.sites ?? null,
     vertical:             VERTICAL_LABEL[r.venue_type] ?? r.venue_type ?? null,
     submission_type:      "external",
