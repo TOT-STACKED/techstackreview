@@ -1,0 +1,55 @@
+<!--
+  Tech on Toast Stack Review — Webflow embed snippet
+  =====================================================
+  Paste this into a Webflow Embed element on
+  https://www.techontoast.community/tech-stack-health
+
+  The iframe auto-resizes to match the app's content height via
+  postMessage so there's no inner scrollbar. Matches the app's dark
+  brand perfectly (bg is #0d1702 so no flash during load).
+
+  Host URL below ASSUMES GitHub Pages at:
+    https://tot-stacked.github.io/techstackreview/
+  Update the `src` if you host it elsewhere (Netlify, Vercel, Webflow
+  asset manager, a CNAME subdomain, etc).
+-->
+
+<style>
+  .tot-stack-review-wrap {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    background: #0d1702;
+  }
+  .tot-stack-review-wrap iframe {
+    width: 100%;
+    min-height: 900px; /* shown before the first postMessage lands */
+    border: 0;
+    display: block;
+    background: #0d1702;
+  }
+</style>
+
+<div class="tot-stack-review-wrap">
+  <iframe
+    id="tot-stack-review"
+    src="https://tot-stacked.github.io/techstackreview/"
+    title="Tech on Toast Stack Review"
+    loading="lazy"
+    allow="clipboard-write"
+  ></iframe>
+</div>
+
+<script>
+  (function () {
+    var iframe = document.getElementById("tot-stack-review");
+    if (!iframe) return;
+    window.addEventListener("message", function (e) {
+      var d = e.data;
+      if (!d || d.type !== "tot-stack-review-height") return;
+      // Ignore bogus values
+      if (typeof d.height !== "number" || d.height < 200) return;
+      iframe.style.height = d.height + "px";
+    });
+  })();
+</script>

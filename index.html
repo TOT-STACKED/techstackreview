@@ -1194,6 +1194,28 @@ function App() {
 }
 
 createRoot(document.getElementById("root")).render(h(App));
+
+// ---------- IFRAME AUTO-RESIZE ----------
+// When embedded in an <iframe> (e.g. on techontoast.community), post the document
+// height up to the parent page so it can resize the iframe to match. The parent
+// listens for { type: "tot-stack-review-height", height } messages.
+(() => {
+  if (window.parent === window) return; // not embedded
+  let lastHeight = 0;
+  const send = () => {
+    const h = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight
+    );
+    if (h === lastHeight) return;
+    lastHeight = h;
+    window.parent.postMessage({ type: "tot-stack-review-height", height: h }, "*");
+  };
+  send();
+  window.addEventListener("resize", send);
+  new ResizeObserver(send).observe(document.body);
+  new MutationObserver(send).observe(document.body, { childList: true, subtree: true, characterData: true });
+})();
 </script>
 </body>
 </html>
