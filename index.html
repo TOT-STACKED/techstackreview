@@ -409,8 +409,8 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
   const canSubmit = firstName && lastName && emailOk && phoneOk && company && consent && !submitting;
   return h("div", { className: "fade-in max-w-xl mx-auto" },
     h("div", { className: "rounded-2xl bg-canvas border border-line p-8" },
-      h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "Almost there"),
-      h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your benchmark is ready"),
+      h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "One more step"),
+      h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your Stack Review is ready"),
       preview && h("div", { className: "rounded-xl bg-canvas border border-line p-4 mb-5" },
         h("div", { className: "text-xs text-muted mb-1 uppercase tracking-wider font-semibold" }, "Conservative upside estimate"),
         h("div", { className: "font-display text-2xl font-bold text-brand" },
@@ -427,7 +427,7 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
         ),
       ),
       h("p", { className: "text-muted mb-6" },
-        "Drop your details to unlock the full breakdown: peer comparison, costed opportunities, and where to push first. Operator-to-operator. No sales spam."
+        "Quick details and we'll show you the breakdown: where you're strong, where you're leaking, and the few moves worth making this quarter."
       ),
       h("div", { className: "space-y-3" },
         h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
@@ -665,20 +665,20 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
             h("div", { className: "text-cream/70 text-sm" }, "of manager time back every week")
           ),
           h("p", { className: "text-cream/80 text-sm" },
-            lead.firstName ? `${lead.firstName}, based on how ${lead.company || "your venue"} stacks up vs. ${segmentLabel}. ` : "",
-            `Your stack covers ${coverage}% of the 6 core categories. `,
+            lead.firstName ? `${lead.firstName}, here's how ${lead.company || "your venue"} looks against other ${segmentLabel}. ` : "",
+            `You've got tools in ${coverage}% of the 6 categories. `,
             gaps.length > 0 && switchGbp > 0
-              ? `${fmtGBP(gapGbp)} is sitting in ${gaps.length} open gap${gaps.length === 1 ? "" : "s"}, and another ${fmtGBP(switchGbp)} is recoverable by switching or renegotiating what you already run.`
+              ? `${fmtGBP(gapGbp)} is sitting in ${gaps.length} open gap${gaps.length === 1 ? "" : "s"}. Another ${fmtGBP(switchGbp)} is on the table from switching or renegotiating what you already run.`
               : gaps.length > 0
-              ? `${gaps.length} gap${gaps.length === 1 ? "" : "s"} are leaving real money and hours on the table.`
+              ? `${gaps.length} gap${gaps.length === 1 ? "" : "s"} leaving money and hours on the table.`
               : switchGbp > 0
-              ? `You're running a full stack, but ${fmtGBP(switchGbp)} is typically recoverable by switching or renegotiating contracts.`
-              : "you're running a complete stack. Nice work."
+              ? `Full stack, no obvious gaps. But ${fmtGBP(switchGbp)} is usually on the table once contracts come up for renewal.`
+              : "full stack, clean sweep. Nothing obvious to fix."
           )
         )
       ),
       totalGbp > 0 && h("div", { className: "mt-6 text-xs text-cream/50" },
-        "Conservative estimates based on lower-end industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional only. Actual results vary widely by operator, menu, contracts and team buy-in."
+        "Numbers use low-end community benchmarks for UK sites turning over around £1m. Your actual figures depend on your menu, your contracts, and whether the team actually uses the tool."
       )
     ),
 
@@ -813,9 +813,9 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
     h("div", { className: "rounded-3xl bg-brand text-ink p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-[0_8px_32px_-10px_rgba(130,233,20,0.45)]" },
       h("div", null,
         h("div", { className: "text-xs uppercase tracking-wider font-bold mb-1" }, "Go deeper"),
-        h("div", { className: "font-display text-xl md:text-2xl font-bold mb-1" }, "Unlock the full audit"),
+        h("div", { className: "font-display text-xl md:text-2xl font-bold mb-1" }, "Want us to dig in?"),
         h("div", { className: "text-sm opacity-80 max-w-md" },
-          "Six more questions. We pinpoint your single biggest lever, check contract timing, and line up vetted partners for the gaps worth fixing first."
+          "Six quick questions and we'll spot your biggest lever, clock what's up for renewal, and line you up with the partners worth a 20-minute call."
         )
       ),
       h("div", { className: "flex gap-2 shrink-0" },
@@ -835,7 +835,7 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
     ),
 
     h("div", { className: "text-center text-xs text-muted mt-8" },
-      "Benchmarks based on Tech on Toast community data. ROI estimates are directional, not a vendor endorsement or guarantee."
+      "Benchmarks come from the Tech on Toast community. Numbers are directional, not a vendor endorsement."
     )
   );
 }
@@ -845,7 +845,7 @@ const DEEP_QUESTIONS = [
   {
     id: "pain_category",
     prompt: "Which part of your stack is hurting most right now?",
-    help: "Pick the category that's bleeding money or time.",
+    help: "Where's the biggest headache right now?",
     type: "single",
     options: [
       { id: "pos", label: "EPOS" },
@@ -873,7 +873,7 @@ const DEEP_QUESTIONS = [
   {
     id: "tech_spend_band",
     prompt: "Rough annual tech spend across your stack?",
-    help: "Ballpark is fine. This is just so we can match the right partners.",
+    help: "Rough number is fine. Just helps us match the right partners.",
     type: "single",
     options: [
       { id: "<5k", label: "Under £5k" },
@@ -887,7 +887,7 @@ const DEEP_QUESTIONS = [
   {
     id: "decision_maker",
     prompt: "Who signs off on tech decisions?",
-    help: "So we pitch at the right level.",
+    help: "Saves us pitching to the wrong person.",
     type: "single",
     options: [
       { id: "me", label: "Me" },
@@ -900,7 +900,7 @@ const DEEP_QUESTIONS = [
   {
     id: "growth_goal",
     prompt: "What's your #1 tech priority for the next 12 months?",
-    help: "Pick one. There's a text box at the end if yours isn't listed.",
+    help: "Pick the closest. Add your own at the end if none of these fit.",
     type: "single_with_other",
     options: [
       { id: "cost_reduction", label: "Cut costs out of the business" },
@@ -913,8 +913,8 @@ const DEEP_QUESTIONS = [
   },
   {
     id: "open_to_intro",
-    prompt: "Open to a 20-minute intro with vetted partners for your gaps?",
-    help: "No pressure. We only introduce you to the highest-rated operators.",
+    prompt: "Open to a 20-minute intro with partners your peers actually rate?",
+    help: "Worst case you get 20 minutes and a free coffee.",
     type: "single",
     options: [
       { id: "yes", label: "✅ Yes, set one up" },
@@ -976,10 +976,10 @@ function DeepThanks({ onReset, lead }) {
       lead.firstName ? `Thanks, ${lead.firstName}.` : "Thanks."
     ),
     h("p", { className: "text-lg text-cream/85 mb-2" },
-      "You're in. We've flagged your priorities to the Tech on Toast team."
+      "Got your details. We'll have a proper look and come back with a shortlist."
     ),
     h("p", { className: "text-base text-muted mb-8" },
-      "Expect an email within 2 working days with your shortlist. No sales spam, no hard sells. Operator to operator."
+      "Expect an email inside 2 working days. If any of the intros don't fit, ignore them. We're not here to spray and pray."
     ),
     h("button", {
       onClick: onReset,
