@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Restaurant Tech Stack Benchmark · Tech on Toast</title>
+<title>Stack Review · Tech on Toast</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = {
@@ -265,27 +265,27 @@ function Intro({ onStart }) {
   return h("div", { className: "max-w-2xl mx-auto text-center fade-in" },
     h("div", { className: "inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-line text-xs font-medium text-muted mb-6" },
       h("span", { className: "h-1.5 w-1.5 rounded-full bg-toast" }),
-      "Tech on Toast · Industry Benchmark"
+      "Tech on Toast · Stack Review"
     ),
     h("h1", { className: "font-display text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4" },
-      "Is your ",
-      h("span", { className: "text-toast" }, "tech stack"),
-      " leaving money on the table?"
+      "You're paying for your tech. ",
+      h("span", { className: "text-toast" }, "Is it paying you back?")
     ),
-    h("p", { className: "text-lg text-muted mb-8" },
-      "Tell us what you use across 6 core categories. In under a minute, get a personalised report that pinpoints: ",
-      h("span", { className: "text-ink font-semibold" }, "where you're behind your peers, how many hours a week you could win back, and the £ savings sitting in your gaps"),
-      "."
+    h("p", { className: "text-lg text-muted mb-2" },
+      "No hype. Just what works."
+    ),
+    h("p", { className: "text-base text-muted mb-8" },
+      "Six categories. Under a minute. Get a free, personalised report showing where you're behind your peers, the hours/week you could win back, and the £ savings hiding in your stack."
     ),
     h("div", { className: "flex items-center justify-center gap-3 mb-10" },
-      h(PrimaryBtn, { onClick: onStart }, "Start benchmark →"),
+      h(PrimaryBtn, { onClick: onStart }, "Start my benchmark →"),
       h("span", { className: "text-sm text-muted" }, "~60 seconds · free")
     ),
     h("div", { className: "grid grid-cols-3 gap-4 text-sm" },
       [
-        ["📈", "Peer benchmark", "vs. 500+ UK venues"],
-        ["💷", "£ + hrs back", "specific to your gaps"],
-        ["🎯", "Vendor shortlist", "from 150+ partners"],
+        ["📈", "Benchmarked", "against your peer group"],
+        ["💷", "£ + hrs back", "specific to your stack"],
+        ["🎯", "Operator-first", "no hype, no sales spam"],
       ].map(([e, t, s], i) => h("div", { key: i, className: "rounded-xl bg-white border border-line p-4 text-left" },
         h("div", { className: "text-xl mb-1" }, e),
         h("div", { className: "font-semibold" }, t),
@@ -419,7 +419,7 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
         ),
       ),
       h("p", { className: "text-muted mb-6" },
-        "Drop your details to unlock the full report: score, per-category comparison, and a costed roadmap for your top 3 gaps."
+        "Drop your details to unlock the full breakdown: peer comparison, costed opportunities, and where to push first. Operator-to-operator. No sales spam."
       ),
       h("div", { className: "space-y-3" },
         h("input", {
@@ -903,7 +903,7 @@ function App() {
           h("div", { className: "hidden sm:block font-display font-semibold text-sm leading-tight" },
             "Stack",
             h("br"),
-            "Benchmark"
+            "Review"
           ),
         ),
         step !== 0 && h(GhostBtn, { onClick: reset }, "Restart")
@@ -944,8 +944,13 @@ function App() {
       step === REPORT_STEP && h(Report, { venue, stack, lead, onReset: reset }),
     ),
 
-    h("footer", { className: "max-w-5xl mx-auto px-5 py-10 text-center text-xs text-muted" },
-      "© Tech on Toast · Built for the UK hospitality community"
+    h("footer", { className: "max-w-5xl mx-auto px-5 py-10 text-center text-xs text-muted space-y-1" },
+      h("div", null,
+        "Built by ",
+        h("a", { href: "https://www.techontoast.community", target: "_blank", rel: "noopener", className: "underline hover:text-ink" }, "Tech on Toast"),
+        " — the UK hospitality tech community."
+      ),
+      h("div", null, "We speak operator, not code.")
     )
   );
 }
