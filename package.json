@@ -1,0 +1,13 @@
+{
+  "name": "techstackreview",
+  "version": "1.0.0",
+  "description": "Tech on Toast Stack Review — lead-gen benchmark app.",
+  "private": true,
+  "scripts": {
+    "dev": "python3 -m http.server 8080",
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "^2.92.0"
+  }
+}
