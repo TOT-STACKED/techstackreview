@@ -14,14 +14,15 @@
           brand: '#82e914',
           brandDark: '#69bc10',
           brandDeep: '#0d1702',
+          brandShade: '#152708',
           accent: '#cc15e8',
           accentDark: '#a411bb',
-          toast: '#cc15e8',
-          toastDark: '#a411bb',
+          toast: '#82e914',
+          toastDark: '#69bc10',
           cream: '#ffffff',
-          canvas: '#f7f7f7',
-          line: '#dbdbdb',
-          muted: '#595959',
+          canvas: '#152708',
+          line: '#254211',
+          muted: '#a8b29a',
           mint: '#12B886',
         },
         fontFamily: {
@@ -36,7 +37,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
 <style>
-  html, body { background: #ffffff; }
+  html, body { background: #0d1702; color: #ffffff; }
+  .logo-invert { filter: brightness(0) invert(1); }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   .fade-in { animation: fade 300ms ease-out; }
@@ -54,7 +56,7 @@ import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 const h = React.createElement;
 
 // ---------- SUPABASE CONFIG ----------
-// Anon key is safe to expose on the frontend — the RLS policy on the `submissions` table restricts it to INSERT only.
+// Anon key is safe to expose on the frontend. The RLS policy on the `submissions` table restricts it to INSERT only.
 const SUPABASE_URL = "https://kohnakdevwfudzgfjmab.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvaG5ha2RldndmdWR6Z2ZqbWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MTQwMDYsImV4cCI6MjA5MTk5MDAwNn0.1_SzL7KcimLJrumUzQxpoYZS8GiOKASzJkKHBC1iqr0";
 
@@ -77,7 +79,7 @@ async function postSubmission(payload) {
 }
 
 // ---------- CATEGORY CATALOGUE ----------
-// 6 core categories — the strategic tech decisions operators make most.
+// 6 core categories. The strategic tech decisions operators make most.
 const CATEGORIES = [
   {
     id: "pos",
@@ -251,7 +253,7 @@ function PrimaryBtn({ children, onClick, disabled }) {
 function GhostBtn({ children, onClick }) {
   return h("button", {
     onClick,
-    className: "px-4 py-3 rounded-full font-medium text-muted hover:text-ink",
+    className: "px-4 py-3 rounded-full font-medium text-muted hover:text-cream",
   }, children);
 }
 
@@ -261,43 +263,35 @@ function Card({ selected, onClick, children, compact }) {
     className: `text-left w-full rounded-2xl border transition
       ${compact ? "px-4 py-3" : "p-5"}
       ${selected
-        ? "border-ink bg-ink text-cream shadow-[0_6px_24px_-10px_rgba(0,0,0,0.3)]"
-        : "border-line bg-white hover:border-ink/40 hover:shadow-sm"}`,
+        ? "border-brand bg-brand text-ink shadow-[0_8px_24px_-10px_rgba(130,233,20,0.45)]"
+        : "border-line bg-canvas text-cream hover:border-brand/60 hover:bg-brandShade"}`,
   }, children);
 }
 
 // ---------- STEPS ----------
 function Intro({ onStart }) {
-  return h("div", { className: "max-w-2xl mx-auto text-center fade-in" },
-    h("div", { className: "inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-line text-xs font-medium text-muted mb-6" },
-      h("span", { className: "h-1.5 w-1.5 rounded-full bg-toast" }),
-      "Tech on Toast · Stack Review"
+  return h("div", { className: "max-w-3xl mx-auto text-center fade-in py-6 md:py-12" },
+    h("h1", { className: "font-display text-[2.75rem] sm:text-6xl md:text-7xl font-bold tracking-tight leading-[0.98] mb-10 text-brand" },
+      "You're Paying for Your Tech. But Is It Paying You Back?"
     ),
-    h("h1", { className: "font-display text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4" },
-      "You're paying for your tech. ",
-      h("span", { className: "text-toast" }, "Is it paying you back?")
+    h("p", { className: "text-base md:text-lg text-cream/85 mb-5 leading-relaxed max-w-2xl mx-auto" },
+      "Tech on Toast helps hospitality operators make smarter tech decisions. We assess your current stack, highlight gaps and inefficiencies, and show you what's possible, without the jargon, the bias or the hard sell."
     ),
-    h("p", { className: "text-lg text-muted mb-2" },
-      "No hype. Just what works."
+    h("p", { className: "text-base md:text-lg text-cream/85 mb-8 leading-relaxed max-w-2xl mx-auto" },
+      "Get your free Stack Review in under a minute and see where your systems are helping… and where they're holding you back."
     ),
-    h("p", { className: "text-base text-muted mb-8" },
-      "Six categories. Under a minute. Get a free, personalised report showing where you're behind your peers, the hours/week you could win back, and the £ savings hiding in your stack."
+    h("p", { className: "text-sm text-cream/70 mb-8 italic" },
+      "We speak operator, not code."
     ),
-    h("div", { className: "flex items-center justify-center gap-3 mb-10" },
-      h(PrimaryBtn, { onClick: onStart }, "Start my benchmark →"),
-      h("span", { className: "text-sm text-muted" }, "~60 seconds · free")
-    ),
-    h("div", { className: "grid grid-cols-3 gap-4 text-sm" },
-      [
-        ["📈", "Benchmarked", "against your peer group"],
-        ["💷", "£ + hrs back", "specific to your stack"],
-        ["🎯", "Operator-first", "no hype, no sales spam"],
-      ].map(([e, t, s], i) => h("div", { key: i, className: "rounded-xl bg-white border border-line p-4 text-left" },
-        h("div", { className: "text-xl mb-1" }, e),
-        h("div", { className: "font-semibold" }, t),
-        h("div", { className: "text-muted" }, s),
-      ))
-    ),
+    h("div", { className: "flex flex-col sm:flex-row items-center justify-center gap-3" },
+      h(PrimaryBtn, { onClick: onStart }, "Start my Stack Review →"),
+      h("a", {
+        href: "https://www.techontoast.community/marketplace",
+        target: "_blank",
+        rel: "noopener",
+        className: "px-6 py-3 rounded-full font-semibold border border-brand/40 text-cream hover:border-brand hover:text-brand transition",
+      }, "Visit Marketplace →"),
+    )
   );
 }
 
@@ -353,7 +347,7 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext
     h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-1" },
       `What do you use for ${category.label.toLowerCase().replace(/,/g, "").split(" & ")[0]}?`
     ),
-    h("p", { className: "text-muted mb-6" }, `${category.hint}. Pick all that apply — or skip if none.`),
+    h("p", { className: "text-muted mb-6" }, `${category.hint}. Pick all that apply, or skip if none.`),
 
     h("div", { className: "grid grid-cols-2 md:grid-cols-3 gap-3 mb-4" },
       category.options.map(opt => {
@@ -373,14 +367,14 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext
     ),
 
     // Other free-text
-    h("div", { className: "rounded-2xl border border-dashed border-line bg-white/60 p-4 mb-4" },
-      h("label", { className: "block text-sm font-semibold mb-2" }, "Using something else? Type it below"),
+    h("div", { className: "rounded-2xl border border-dashed border-line bg-brandShade/60 p-4 mb-4" },
+      h("label", { className: "block text-sm font-semibold mb-2 text-cream" }, "Using something else? Type it below"),
       h("input", {
         type: "text",
         value: other,
         onChange: e => onOtherChange(e.target.value),
         placeholder: "e.g. a bespoke in-house tool, a vendor not listed…",
-        className: "w-full px-4 py-2.5 rounded-xl border border-line focus:border-ink outline-none text-sm bg-white",
+        className: "w-full px-4 py-2.5 rounded-xl border border-line focus:border-brand outline-none text-sm bg-brandDeep text-cream placeholder:text-muted",
         disabled: none,
       }),
       h("p", { className: "text-xs text-muted mt-1" },
@@ -390,7 +384,7 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext
 
     h("button", {
       onClick: onNone,
-      className: `text-sm underline ${none ? "text-toast font-semibold" : "text-muted hover:text-ink"}`,
+      className: `text-sm underline ${none ? "text-brand font-semibold" : "text-muted hover:text-cream"}`,
     }, none ? "✓ We don't use anything here" : "We don't use anything here / not sure"),
 
     h("div", { className: "mt-10 flex items-center justify-between" },
@@ -406,12 +400,12 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
   const submitting = submitState && submitState.status === "submitting";
   const canSubmit = firstName && emailOk && company && consent && !submitting;
   return h("div", { className: "fade-in max-w-xl mx-auto" },
-    h("div", { className: "rounded-2xl bg-white border border-line p-8" },
+    h("div", { className: "rounded-2xl bg-canvas border border-line p-8" },
       h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "Almost there"),
       h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your benchmark is ready"),
       preview && h("div", { className: "rounded-xl bg-canvas border border-line p-4 mb-5" },
         h("div", { className: "text-xs text-muted mb-1 uppercase tracking-wider font-semibold" }, "Your estimated upside"),
-        h("div", { className: "font-display text-2xl font-bold text-ink" },
+        h("div", { className: "font-display text-2xl font-bold text-brand" },
           `${fmtGBP(preview.totalGbp)}/yr + ${preview.totalHrs} hrs/wk`,
         ),
         h("div", { className: "text-sm text-muted mt-1" },
@@ -429,20 +423,20 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
       ),
       h("div", { className: "space-y-3" },
         h("input", {
-          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
           placeholder: "First name",
           value: firstName || "",
           onChange: e => onChange({ ...value, firstName: e.target.value }),
         }),
         h("input", {
-          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
           placeholder: "Work email",
           type: "email",
           value: email || "",
           onChange: e => onChange({ ...value, email: e.target.value }),
         }),
         h("input", {
-          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
           placeholder: "Venue / company name",
           value: company || "",
           onChange: e => onChange({ ...value, company: e.target.value }),
@@ -458,7 +452,7 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
             "OK to send my report by email and occasionally share relevant hospitality tech insights. Unsubscribe any time."
           )
         ),
-        // Honeypot — hidden from humans, bots fill it and we drop the submission.
+        // Honeypot: hidden from humans, bots fill it and we drop the submission.
         h("input", {
           type: "text",
           tabIndex: -1,
@@ -471,7 +465,7 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
       ),
       submitState && submitState.status === "error" && h("div", {
         className: "mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3",
-      }, "Sorry — couldn't save your submission. ", submitState.error || "Please try again."),
+      }, "Sorry, couldn't save your submission. ", submitState.error || "Please try again."),
       h("div", { className: "mt-6 flex items-center justify-between" },
         h(GhostBtn, { onClick: onBack }, "← Back"),
         h(PrimaryBtn, { onClick: onSubmit, disabled: !canSubmit },
@@ -568,7 +562,7 @@ function ScoreRing({ score }) {
   const off = c - (pct / 100) * c;
   return h("div", { className: "relative w-32 h-32" },
     h("svg", { viewBox: "0 0 120 120", className: "w-full h-full -rotate-90" },
-      h("circle", { cx: 60, cy: 60, r, stroke: "#3a3a3a", strokeWidth: 10, fill: "none" }),
+      h("circle", { cx: 60, cy: 60, r, stroke: "#254211", strokeWidth: 10, fill: "none" }),
       h("circle", {
         cx: 60, cy: 60, r, stroke: "#82e914", strokeWidth: 10, fill: "none",
         strokeLinecap: "round",
@@ -598,7 +592,7 @@ function Report({ venue, stack, lead, onReset }) {
   return h("div", { className: "fade-in" },
 
     // ROI headline strip
-    h("div", { className: "rounded-3xl bg-ink text-cream p-8 md:p-10 mb-6" },
+    h("div", { className: "rounded-3xl bg-canvas border border-line p-8 md:p-10 mb-6" },
       h("div", { className: "flex flex-col md:flex-row md:items-center gap-8" },
         h(ScoreRing, { score: matchScore }),
         h("div", { className: "flex-1" },
@@ -623,29 +617,29 @@ function Report({ venue, stack, lead, onReset }) {
               : gaps.length > 0
               ? `${gaps.length} gap${gaps.length === 1 ? "" : "s"} are leaving real money and hours on the table.`
               : switchGbp > 0
-              ? `You're running a full stack — but ${fmtGBP(switchGbp)} is typically recoverable by switching or renegotiating contracts.`
+              ? `You're running a full stack, but ${fmtGBP(switchGbp)} is typically recoverable by switching or renegotiating contracts.`
               : "you're running a complete stack. Nice work."
           )
         )
       ),
       totalGbp > 0 && h("div", { className: "mt-6 text-xs text-cream/50" },
-        "Estimates based on industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional — actual results vary by operator, menu and contracts."
+        "Estimates based on industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional. Actual results vary by operator, menu and contracts."
       )
     ),
 
-    // Gap opportunities — where peers have it and you don't
+    // Gap opportunities: where peers have it and you don't
     gaps.length > 0 && h("div", { className: "mb-8" },
       h("div", { className: "flex items-end justify-between mb-3" },
         h("div", null,
           h("div", { className: "text-xs uppercase tracking-wider text-toast font-semibold mb-1" }, "Gap opportunities"),
-          h("h3", { className: "font-display text-xl font-bold" }, `Close these ${gaps.length} gap${gaps.length === 1 ? "" : "s"} — peers already have them`)
+          h("h3", { className: "font-display text-xl font-bold" }, `Close these ${gaps.length} gap${gaps.length === 1 ? "" : "s"} that peers already have`)
         ),
         h("div", { className: "text-xs text-muted" }, "ranked by £ upside")
       ),
       h("div", { className: "grid gap-3" },
         gaps.slice(0, 5).map((g, i) => h("div", {
           key: g.category.id,
-          className: "rounded-2xl bg-white border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
+          className: "rounded-2xl bg-canvas border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
         },
           h("div", { className: "flex items-center gap-3 md:w-52 shrink-0" },
             h("div", { className: "w-9 h-9 rounded-full bg-toast/15 text-toast flex items-center justify-center font-bold text-sm" }, `#${i + 1}`),
@@ -671,7 +665,7 @@ function Report({ venue, stack, lead, onReset }) {
       ),
     ),
 
-    // Switch / renegotiation opportunities — where they DO have a tool but there's upside in changing
+    // Switch / renegotiation opportunities: where they DO have a tool but there's upside in changing
     switches.length > 0 && h("div", { className: "mb-8" },
       h("div", { className: "flex items-end justify-between mb-3" },
         h("div", null,
@@ -683,7 +677,7 @@ function Report({ venue, stack, lead, onReset }) {
       h("div", { className: "grid gap-3" },
         switches.slice(0, 5).map((s, i) => h("div", {
           key: s.category.id,
-          className: "rounded-2xl bg-white border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
+          className: "rounded-2xl bg-canvas border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
         },
           h("div", { className: "flex items-center gap-3 md:w-52 shrink-0" },
             h("div", { className: "w-9 h-9 rounded-full bg-mint/15 text-mint flex items-center justify-center font-bold text-sm" }, `#${i + 1}`),
@@ -722,7 +716,7 @@ function Report({ venue, stack, lead, onReset }) {
         const youList = [...tools, ...(other ? [other] : [])];
         return h("div", {
           key: c.id,
-          className: "rounded-2xl bg-white border border-line p-5",
+          className: "rounded-2xl bg-canvas border border-line p-5",
         },
           h("div", { className: "flex items-start justify-between gap-4 mb-3" },
             h("div", null,
@@ -751,8 +745,8 @@ function Report({ venue, stack, lead, onReset }) {
                 key: name,
                 className: `text-xs px-2.5 py-1 rounded-full border
                   ${isYours
-                    ? "bg-ink text-cream border-ink"
-                    : "bg-canvas text-muted border-line"}`,
+                    ? "bg-brand text-ink border-brand"
+                    : "bg-brandShade text-cream/70 border-line"}`,
               }, `${name} · ${pct}%${isYours ? " · you" : ""}`);
             })
           )
@@ -761,10 +755,10 @@ function Report({ venue, stack, lead, onReset }) {
     ),
 
     // CTA
-    h("div", { className: "rounded-2xl bg-white border border-line p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4" },
+    h("div", { className: "rounded-2xl bg-canvas border border-line p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4" },
       h("div", null,
         h("div", { className: "font-display text-lg font-bold" }, "Want help closing these gaps?"),
-        h("div", { className: "text-sm text-muted" }, "We'll intro you to 2–3 vetted Tech on Toast partners for your priority gaps — no sales spam, just the right shortlist.")
+        h("div", { className: "text-sm text-muted" }, "We'll intro you to 2–3 vetted Tech on Toast partners for your priority gaps. No sales spam, just the right shortlist.")
       ),
       h("div", { className: "flex gap-2" },
         h("button", {
@@ -880,7 +874,7 @@ function App() {
       if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith("REPLACE_")) {
         await postSubmission(payload);
       } else {
-        console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set — skipping network submission");
+        console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set, skipping network submission");
       }
       setSubmitState({ status: "idle", error: "" });
       setStep(REPORT_STEP);
@@ -897,13 +891,13 @@ function App() {
   const showProgress = step >= VENUE_STEP && step <= GATE_STEP;
 
   return h("div", { className: "min-h-screen" },
-    h("header", { className: "border-b border-line bg-white/80 backdrop-blur sticky top-0 z-10" },
+    h("header", { className: "border-b border-line bg-brandDeep/90 backdrop-blur sticky top-0 z-10" },
       h("div", { className: "max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" },
         h("div", { className: "flex items-center gap-3" },
           h("img", {
             src: "tech-on-toast-logo.svg",
             alt: "Tech on Toast",
-            className: "h-10 w-auto",
+            className: "h-10 w-auto logo-invert",
           }),
           h("div", { className: "hidden sm:block h-6 w-px bg-line" }),
           h("div", { className: "hidden sm:block font-display font-semibold text-sm leading-tight" },
@@ -954,7 +948,7 @@ function App() {
       h("div", null,
         "Built by ",
         h("a", { href: "https://www.techontoast.community", target: "_blank", rel: "noopener", className: "underline hover:text-ink" }, "Tech on Toast"),
-        " — the UK hospitality tech community."
+        ", the UK hospitality tech community."
       ),
       h("div", null, "We speak operator, not code.")
     )
