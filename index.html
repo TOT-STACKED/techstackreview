@@ -1149,7 +1149,12 @@ function App() {
   return h("div", { className: "min-h-screen" },
     h("header", { className: "border-b border-line bg-brandDeep/90 backdrop-blur sticky top-0 z-10" },
       h("div", { className: "max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" },
-        h("div", { className: "flex items-center gap-3" },
+        h("a", {
+          href: "https://www.techontoast.community",
+          target: "_top",
+          className: "flex items-center gap-3 hover:opacity-80 transition",
+          "aria-label": "Tech on Toast home",
+        },
           h("img", {
             src: "tech-on-toast-logo.svg",
             alt: "Tech on Toast",
