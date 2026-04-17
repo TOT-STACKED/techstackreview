@@ -4,9 +4,14 @@
 //   - public.submissions   → 🍞  "New Stack Review submission"          (stage 1)
 //   - public.deep_reviews  → 🔥  "Sales-qualified Stack Review"        (stage 2)
 //
+// Also (for stage 1 only) forwards the submission into the Tech on Toast
+// "approved reporting" Supabase so the portal's dashboards pick it up.
+//
 // Required env vars (via `supabase secrets set`):
-//   - SLACK_WEBHOOK_URL: Slack incoming webhook URL
-//   - WEBHOOK_SECRET:    shared secret, presented as `Authorization: Bearer <secret>`
+//   - SLACK_WEBHOOK_URL:        Slack incoming webhook URL
+//   - WEBHOOK_SECRET:           shared secret, presented as `Authorization: Bearer <secret>`
+//   - STACKCOLLECT_SUPABASE_URL (optional): portal Supabase base URL
+//   - STACKCOLLECT_SUPABASE_KEY (optional): portal anon key
 //
 // Deploy: supabase functions deploy slack-notify --no-verify-jwt
 
@@ -14,8 +19,10 @@
 // @ts-nocheck — Deno edge runtime.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
-const WEBHOOK_SECRET    = Deno.env.get("WEBHOOK_SECRET");
+const SLACK_WEBHOOK_URL          = Deno.env.get("SLACK_WEBHOOK_URL");
+const WEBHOOK_SECRET             = Deno.env.get("WEBHOOK_SECRET");
+const STACKCOLLECT_SUPABASE_URL  = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
+const STACKCOLLECT_SUPABASE_KEY  = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
 
 const fmtGBP = (n: number) => {
   if (!n) return "£0";
@@ -120,6 +127,99 @@ function buildDeepReviewMessage(r: any) {
   };
 }
 
+// ---- Portal / approved-reporting sync ----
+// Maps a stage-1 submissions row into the portal's normalized shape and inserts
+// (1) a business_submissions row then (2) one tech_stack_entries row per tool.
+// Silent on error so the Slack ping still goes through even if the portal is
+// misconfigured. Best-effort only.
+const VERTICAL_LABEL: Record<string, string> = {
+  indie: "Independent restaurant",
+  group: "Multi-site restaurant group",
+  bar:   "Bar / pub",
+  qsr:   "QSR / fast casual",
+  hotel: "Hotel F&B",
+  other: "Other",
+};
+const SIZE_LABEL: Record<string, string> = {
+  "1":    "1 site",
+  "2-5":  "2–5 sites",
+  "6-20": "6–20 sites",
+  "20+":  "20+ sites",
+};
+const CATEGORY_LABEL: Record<string, string> = {
+  pos:       "EPOS",
+  payments:  "Payments",
+  workforce: "Workforce",
+  inventory: "Inventory",
+  loyalty:   "Loyalty / CRM",
+  learning:  "Learning",
+};
+
+async function syncToStackcollect(r: any) {
+  if (!STACKCOLLECT_SUPABASE_URL || !STACKCOLLECT_SUPABASE_KEY) return;
+
+  const headers = {
+    apikey: STACKCOLLECT_SUPABASE_KEY,
+    Authorization: `Bearer ${STACKCOLLECT_SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  const biz = {
+    business_name:        r.company ?? null,
+    industry:             "Hospitality",
+    size:                 SIZE_LABEL[r.sites] ?? r.sites ?? null,
+    location:             null,
+    contact_name:         r.first_name ?? null,
+    contact_email:        r.email ?? null,
+    role:                 null,
+    phone_number:         null,
+    number_of_locations:  SIZE_LABEL[r.sites] ?? r.sites ?? null,
+    vertical:             VERTICAL_LABEL[r.venue_type] ?? r.venue_type ?? null,
+    submission_type:      "external",
+    marketing_consent:    !!r.consent,
+  };
+
+  try {
+    const bizRes = await fetch(`${STACKCOLLECT_SUPABASE_URL}/rest/v1/business_submissions`, {
+      method: "POST",
+      headers: { ...headers, Prefer: "return=representation" },
+      body: JSON.stringify(biz),
+    });
+    if (!bizRes.ok) {
+      console.error("[stackcollect] business_submissions insert failed", bizRes.status, await bizRes.text().catch(() => ""));
+      return;
+    }
+    const bizRows = await bizRes.json();
+    const bizRow = Array.isArray(bizRows) ? bizRows[0] : bizRows;
+    if (!bizRow?.id) return;
+
+    const stack = r.stack ?? {};
+    const entries: Array<{ submission_id: string; category: string; tool_name: string }> = [];
+    for (const [catId, sRaw] of Object.entries<any>(stack)) {
+      const s = sRaw || {};
+      const catLabel = CATEGORY_LABEL[catId] ?? catId;
+      for (const t of (s.tools ?? [])) {
+        if (t) entries.push({ submission_id: bizRow.id, category: catLabel, tool_name: String(t) });
+      }
+      const other = (s.other ?? "").toString().trim();
+      if (other) entries.push({ submission_id: bizRow.id, category: catLabel, tool_name: other });
+    }
+
+    if (entries.length > 0) {
+      const entriesRes = await fetch(`${STACKCOLLECT_SUPABASE_URL}/rest/v1/tech_stack_entries`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=minimal" },
+        body: JSON.stringify(entries),
+      });
+      if (!entriesRes.ok) {
+        console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, await entriesRes.text().catch(() => ""));
+      }
+    }
+  } catch (e) {
+    console.error("[stackcollect] sync threw", e);
+  }
+}
+
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
@@ -141,6 +241,12 @@ serve(async (req) => {
   const message = tbl === "deep_reviews"
     ? buildDeepReviewMessage(r)
     : buildSubmissionMessage(r);
+
+  // Fan-out to the portal's Supabase on stage 1 submissions. Best-effort, non-blocking.
+  if (tbl === "submissions") {
+    // Deliberately not awaited — Slack should fire regardless of portal sync outcome.
+    syncToStackcollect(r).catch((e) => console.error("[stackcollect] unhandled", e));
+  }
 
   const slackRes = await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
