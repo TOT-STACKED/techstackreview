@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Restaurant Tech Stack Benchmark · Tech on Toast</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0E1116',
+          toast: '#FF6A3D',
+          toastDark: '#E8501F',
+          cream: '#FFF7F1',
+          line: '#E7E2DB',
+          muted: '#6B6257',
+          mint: '#12B886',
+        },
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          display: ['"Space Grotesk"', 'Inter', 'ui-sans-serif', 'system-ui'],
+        },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { background: #FFF7F1; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .fade-in { animation: fade 300ms ease-out; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: none;} }
+  .bar-fill { transition: width 600ms ease-out; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+<div id="root"></div>
+
+<script type="module">
+import React, { useState, useMemo } from "https://esm.sh/react@18.3.1";
+import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
+
+const h = React.createElement;
+
+// ---------- SUPABASE CONFIG ----------
+// Anon key is safe to expose on the frontend — the RLS policy on the `submissions` table restricts it to INSERT only.
+const SUPABASE_URL = "https://kohnakdevwfudzgfjmab.supabase.co";
+const SUPABASE_ANON_KEY = "REPLACE_WITH_SUPABASE_ANON_KEY";
+
+async function postSubmission(payload) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/submissions`, {
+    method: "POST",
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Supabase ${res.status}: ${text || res.statusText}`);
+  }
+  return true;
+}
+
+// ---------- CATEGORY CATALOGUE ----------
+// Every Tech on Toast marketplace partner mapped into 10 categories that operators recognise.
+// Best-guess placement used where a partner straddles categories.
+const CATEGORIES = [
+  {
+    id: "pos",
+    label: "Point of Sale",
+    hint: "The till that rings every sale",
+    icon: "🧾",
+    options: ["Toast", "Lightspeed", "Zonal", "Tissl", "Tevalis", "Kobas", "Tebi", "NFS Hospitality", "Square", "SumUp POS", "SkyTab", "Tabology", "Pointone", "Redcat", "Shopwave", "Zucchetti"],
+  },
+  {
+    id: "payments",
+    label: "Payments, Tips & Gift Cards",
+    hint: "Card terminals, tip distribution, gift cards",
+    icon: "💳",
+    options: ["Dojo", "DNA Payments", "sunday", "Atoa", "SumUp", "Square", "Tebi", "TipJar", "URocked", "JustTip", "StrikeTip", "Grateful", "Toggle", "GiftPro", "GiftTrees"],
+  },
+  {
+    id: "reservations",
+    label: "Reservations & Events",
+    hint: "Bookings, private dining, events, entertainment",
+    icon: "📅",
+    options: ["OpenTable", "ResDiary", "SevenRooms", "Rezcontrol", "Tripleseat", "KuulSeats", "Bustle", "Ambl", "Served", "GigPig", "Eat It Drink It", "Hopsy", "REMS Hospitality", "Collins (DesignMyNight)"],
+  },
+  {
+    id: "ordering",
+    label: "Online Ordering & Delivery",
+    hint: "Direct ordering, marketplaces, aggregator management",
+    icon: "🛵",
+    options: ["Deliverect", "Grubtech", "Otter", "Slerp", "Vita Mojo", "Pepper", "OrderPay", "StoreKit", "Foodhub", "App4", "Pickpad", "eMenu Now", "Youda", "Flex Catering HQ", "Me-U", "Deliveroo", "Uber Eats", "Just Eat"],
+  },
+  {
+    id: "stock",
+    label: "Stock, Recipe & Purchasing",
+    hint: "Inventory, GP tracking, recipe costing, purchase orders",
+    icon: "📦",
+    options: ["Apicbase", "MarketMan", "Nory", "Growyze", "Stocktake Online", "Purchase Warrior (triSaaS)", "Merchant Hub", "Supy", "IngrediFind", "Inpulse", "Cinchio"],
+  },
+  {
+    id: "people",
+    label: "Rotas, Payroll, HR & Training",
+    hint: "Scheduling, payroll, staffing, onboarding, training, team comms",
+    icon: "👥",
+    options: ["Bizimply", "Deputy", "Planday", "Fourth", "Harri", "Rotaready", "s4labour", "Sona", "Brigad", "Workfeed", "Workforce", "PayCaptain", "All Gravy", "Onsi", "Level FT", "People Flo", "Limber", "Talent Unlimited", "YoungOnes", "Tayl", "CPL Learning", "5Mins AI", "Blink", "totti", "Zenzap", "CrunchTime"],
+  },
+  {
+    id: "loyalty",
+    label: "Loyalty, CRM & Marketing",
+    hint: "Guest data, repeat visits, email/SMS, social, wallet passes",
+    icon: "⭐",
+    options: ["Airship", "Acteol", "Embargo", "Stampede", "Paytronix", "Piggy", "Impact Data", "Cardlytics", "Fydelia", "Krowd", "Toggle", "Peckish", "Marka", "Passentry", "Pinpoint", "ttagz", "24social", "Fuse", "Kate Media", "Joli"],
+  },
+  {
+    id: "feedback",
+    label: "Feedback, Reviews & Ops Checklists",
+    hint: "Guest feedback, reviews, H&S, daily tasks, dispute resolution",
+    icon: "📋",
+    options: ["Feed It Back", "HGEM", "Yumpingo", "Sentiment Search", "Guest Chat", "HeyGuest", "OpSpot", "Trail", "Operandio", "Snapfix", "Navitas Safety", "Opsyte", "Insy", "Korero"],
+  },
+  {
+    id: "finance",
+    label: "Accounting, Finance & BI",
+    hint: "Books, analytics, flash reporting, outsourced finance",
+    icon: "📊",
+    options: ["Xero", "QuickBooks", "Sage", "Dext", "Tenzo", "Outmin", "Tahola", "Growdash", "WS & Co Insights", "Wenodo"],
+  },
+  {
+    id: "it",
+    label: "IT, Connectivity & WiFi",
+    hint: "Networks, guest WiFi, background music, hotel ops, IT support",
+    icon: "🌐",
+    options: ["Wolverton", "Captive WiFi", "Sky Business", "Stream", "Startle", "Connect", "Support Wizard", "WRS", "Alkimii", "Sideways"],
+  },
+];
+
+// ---------- ROI MODEL ----------
+// Per-site annual savings & weekly hours saved when an operator adopts a tool in this category.
+// Numbers are directional industry benchmarks for a typical UK site doing ~£800k–£1.2m revenue.
+const ROI = {
+  pos:          { hrs: 2, gbp: 1500,  why: "Modern POS integrations kill 1–3 hrs/wk of manual reconciliation and data re-entry." },
+  payments:     { hrs: 2, gbp: 4800,  why: "Modern acquirers typically cut card fees 0.3–0.5% (~£3–5k/site/yr on £1m revenue). TRONC saves ~13.8% NI on distributed tips." },
+  reservations: { hrs: 3, gbp: 6200,  why: "Deposit-backed bookings cut no-shows from ~10% to under 3%. Better cover management adds 2–4% to revenue." },
+  ordering:     { hrs: 6, gbp: 5400,  why: "One kitchen screen instead of 4 delivery tablets. Fewer missed orders, less menu admin, staff back on the floor." },
+  stock:        { hrs: 6, gbp: 18500, why: "2–4 point GP improvement from recipe costing + variance alerts. Weekly stocktake drops from a day to an hour." },
+  people:       { hrs: 8, gbp: 14000, why: "Smart rotas trim 3–5% off wage cost. Payroll in hours not days. Faster onboarding = less turnover drag." },
+  loyalty:      { hrs: 2, gbp: 9200,  why: "Known guests visit 10–15% more than anonymous ones. Email/SMS to a real database beats paid ads for ROI." },
+  feedback:     { hrs: 3, gbp: 4400,  why: "Catch unhappy guests in under an hour — recover 30–50% vs. losing them silently. Fewer public 1★ reviews." },
+  finance:      { hrs: 4, gbp: 3200,  why: "Daily flash P&L surfaces variance before it costs you a week. 10+ hrs/month on reconciliation goes away." },
+  it:           { hrs: 1, gbp: 2200,  why: "Prevent service-killing outages. Reliable WiFi = better guest capture = more loyalty data." },
+};
+
+function siteMultiplier(sites) {
+  return { "1": 1, "2-5": 3, "6-20": 10, "20+": 25 }[sites] || 1;
+}
+function fmtGBP(n) {
+  if (n >= 1000000) return "£" + (n / 1000000).toFixed(1) + "m";
+  if (n >= 1000) return "£" + Math.round(n / 100) / 10 + "k";
+  return "£" + Math.round(n);
+}
+
+// ---------- BENCHMARK DATA ----------
+// Plausible peer-adoption percentages + top tools per segment. Swap for real community data after launch.
+const BENCHMARKS = {
+  "indie-small": {
+    adoption: { pos: 97, payments: 99, reservations: 58, ordering: 71, stock: 34, people: 48, loyalty: 32, feedback: 28, finance: 88, it: 44 },
+    topTools: {
+      pos: [["Square", 24], ["Lightspeed", 18], ["SumUp POS", 12]],
+      payments: [["Dojo", 34], ["SumUp", 21], ["sunday", 12]],
+      reservations: [["OpenTable", 31], ["ResDiary", 22]],
+      ordering: [["Deliveroo", 58], ["Uber Eats", 41], ["Slerp", 11]],
+      stock: [["MarketMan", 9], ["Growyze", 7]],
+      people: [["Deputy", 14], ["Planday", 11], ["Bizimply", 9]],
+      loyalty: [["Stampede", 11], ["Airship", 8]],
+      feedback: [["Feed It Back", 8], ["Trail", 5]],
+      finance: [["Xero", 58], ["QuickBooks", 22]],
+      it: [["Captive WiFi", 14], ["Wolverton", 9]],
+    },
+  },
+  "indie-group": {
+    adoption: { pos: 99, payments: 99, reservations: 82, ordering: 78, stock: 71, people: 86, loyalty: 61, feedback: 58, finance: 94, it: 78 },
+    topTools: {
+      pos: [["Zonal", 28], ["Lightspeed", 19], ["Toast", 12]],
+      payments: [["Dojo", 38], ["sunday", 19], ["Adyen", 14]],
+      reservations: [["SevenRooms", 26], ["ResDiary", 21], ["Collins (DesignMyNight)", 15]],
+      ordering: [["Deliverect", 41], ["Vita Mojo", 22], ["Slerp", 14]],
+      stock: [["Nory", 18], ["Apicbase", 14], ["MarketMan", 12]],
+      people: [["Harri", 24], ["Fourth", 18], ["Rotaready", 14], ["s4labour", 11]],
+      loyalty: [["Airship", 24], ["Acteol", 14], ["Toggle", 12]],
+      feedback: [["Feed It Back", 21], ["HGEM", 18], ["Trail", 14]],
+      finance: [["Xero", 54], ["Tenzo", 18], ["Dext", 14]],
+      it: [["Wolverton", 22], ["Sky Business", 18], ["WRS", 11]],
+    },
+  },
+  "bar-pub": {
+    adoption: { pos: 97, payments: 99, reservations: 54, ordering: 44, stock: 51, people: 71, loyalty: 38, feedback: 41, finance: 90, it: 68 },
+    topTools: {
+      pos: [["Zonal", 31], ["Tevalis", 18], ["Lightspeed", 14]],
+      payments: [["Dojo", 32], ["DNA Payments", 18], ["Adyen", 12]],
+      reservations: [["Collins (DesignMyNight)", 19], ["ResDiary", 12]],
+      ordering: [["Deliveroo", 28], ["Uber Eats", 21]],
+      stock: [["Purchase Warrior (triSaaS)", 14], ["MarketMan", 11]],
+      people: [["Harri", 18], ["Bizimply", 16], ["s4labour", 14]],
+      loyalty: [["Stampede", 14], ["Krowd", 9], ["Airship", 9]],
+      feedback: [["HGEM", 18], ["Feed It Back", 14]],
+      finance: [["Xero", 49], ["Sage", 21]],
+      it: [["Sky Business", 28], ["Startle", 19], ["Stream", 14]],
+    },
+  },
+  "qsr": {
+    adoption: { pos: 99, payments: 99, reservations: 14, ordering: 96, stock: 78, people: 84, loyalty: 71, feedback: 54, finance: 93, it: 82 },
+    topTools: {
+      pos: [["Toast", 22], ["Vita Mojo", 18], ["Tissl", 14]],
+      payments: [["Stripe", 31], ["Adyen", 22], ["Dojo", 19]],
+      reservations: [["OpenTable", 4]],
+      ordering: [["Deliverect", 58], ["Deliveroo", 78], ["Uber Eats", 71]],
+      stock: [["Nory", 18], ["MarketMan", 14], ["Apicbase", 11]],
+      people: [["Harri", 22], ["Deputy", 17], ["Planday", 14]],
+      loyalty: [["Airship", 24], ["Paytronix", 18], ["Toggle", 14]],
+      feedback: [["Feed It Back", 18], ["Yumpingo", 14]],
+      finance: [["Tenzo", 21], ["Xero", 38]],
+      it: [["Wolverton", 18], ["Connect", 14]],
+    },
+  },
+  "hotel": {
+    adoption: { pos: 94, payments: 99, reservations: 98, ordering: 38, stock: 68, people: 82, loyalty: 71, feedback: 64, finance: 96, it: 92 },
+    topTools: {
+      pos: [["Zonal", 24], ["Lightspeed", 18], ["NFS Hospitality", 14]],
+      payments: [["Adyen", 28], ["Dojo", 21]],
+      reservations: [["SevenRooms", 31], ["OpenTable", 24], ["REMS Hospitality", 18]],
+      ordering: [["Deliveroo", 22]],
+      stock: [["Purchase Warrior (triSaaS)", 22], ["Apicbase", 14]],
+      people: [["Fourth", 28], ["Alkimii", 19], ["Harri", 14]],
+      loyalty: [["Airship", 24], ["Acteol", 18]],
+      feedback: [["HGEM", 22], ["Feed It Back", 14]],
+      finance: [["Sage", 34], ["Xero", 28]],
+      it: [["Alkimii", 38], ["Sky Business", 28]],
+    },
+  },
+};
+
+function segmentFor(venueType, sites) {
+  if (venueType === "bar") return "bar-pub";
+  if (venueType === "qsr") return "qsr";
+  if (venueType === "hotel") return "hotel";
+  if (sites === "1") return "indie-small";
+  return "indie-group";
+}
+
+const VENUE_TYPES = [
+  { id: "indie", label: "Independent restaurant", emoji: "🍽️" },
+  { id: "group", label: "Multi-site restaurant group", emoji: "🏢" },
+  { id: "bar", label: "Bar or pub", emoji: "🍻" },
+  { id: "qsr", label: "QSR / fast casual", emoji: "🥪" },
+  { id: "hotel", label: "Hotel F&B", emoji: "🏨" },
+  { id: "other", label: "Something else", emoji: "✨" },
+];
+const SITE_OPTIONS = [
+  { id: "1", label: "1 site" },
+  { id: "2-5", label: "2–5 sites" },
+  { id: "6-20", label: "6–20 sites" },
+  { id: "20+", label: "20+ sites" },
+];
+
+// ---------- UI PRIMITIVES ----------
+function Progress({ step, total }) {
+  const pct = Math.round((step / total) * 100);
+  return h("div", { className: "w-full" },
+    h("div", { className: "flex items-center justify-between text-xs text-muted mb-2" },
+      h("span", null, `Step ${step} of ${total}`),
+      h("span", null, `${pct}%`)
+    ),
+    h("div", { className: "h-1.5 bg-line rounded-full overflow-hidden" },
+      h("div", { className: "h-full bg-toast bar-fill", style: { width: `${pct}%` } })
+    )
+  );
+}
+
+function PrimaryBtn({ children, onClick, disabled }) {
+  return h("button", {
+    onClick, disabled,
+    className: `px-6 py-3 rounded-full font-semibold transition shadow-sm
+      ${disabled ? "bg-line text-muted cursor-not-allowed" : "bg-ink text-cream hover:bg-toast hover:text-ink"}`,
+  }, children);
+}
+function GhostBtn({ children, onClick }) {
+  return h("button", {
+    onClick,
+    className: "px-4 py-3 rounded-full font-medium text-muted hover:text-ink",
+  }, children);
+}
+
+function Card({ selected, onClick, children, compact }) {
+  return h("button", {
+    onClick,
+    className: `text-left w-full rounded-2xl border transition
+      ${compact ? "px-4 py-3" : "p-5"}
+      ${selected
+        ? "border-ink bg-ink text-cream shadow-[0_6px_24px_-10px_rgba(0,0,0,0.3)]"
+        : "border-line bg-white hover:border-ink/40 hover:shadow-sm"}`,
+  }, children);
+}
+
+// ---------- STEPS ----------
+function Intro({ onStart }) {
+  return h("div", { className: "max-w-2xl mx-auto text-center fade-in" },
+    h("div", { className: "inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-line text-xs font-medium text-muted mb-6" },
+      h("span", { className: "h-1.5 w-1.5 rounded-full bg-toast" }),
+      "Tech on Toast · Industry Benchmark"
+    ),
+    h("h1", { className: "font-display text-4xl md:text-5xl font-bold tracking-tight leading-tight mb-4" },
+      "Is your ",
+      h("span", { className: "text-toast" }, "tech stack"),
+      " leaving money on the table?"
+    ),
+    h("p", { className: "text-lg text-muted mb-8" },
+      "Tell us what you use across 10 categories. In 60 seconds, get a personalised report that pinpoints: ",
+      h("span", { className: "text-ink font-semibold" }, "where you're behind your peers, how many hours a week you could win back, and the £ savings sitting in your gaps"),
+      "."
+    ),
+    h("div", { className: "flex items-center justify-center gap-3 mb-10" },
+      h(PrimaryBtn, { onClick: onStart }, "Start benchmark →"),
+      h("span", { className: "text-sm text-muted" }, "~60 seconds · free")
+    ),
+    h("div", { className: "grid grid-cols-3 gap-4 text-sm" },
+      [
+        ["📈", "Peer benchmark", "vs. 500+ UK venues"],
+        ["💷", "£ + hrs back", "specific to your gaps"],
+        ["🎯", "Vendor shortlist", "from 150+ partners"],
+      ].map(([e, t, s], i) => h("div", { key: i, className: "rounded-xl bg-white border border-line p-4 text-left" },
+        h("div", { className: "text-xl mb-1" }, e),
+        h("div", { className: "font-semibold" }, t),
+        h("div", { className: "text-muted" }, s),
+      ))
+    ),
+  );
+}
+
+function VenueStep({ value, onChange, onNext }) {
+  const { type, sites } = value;
+  const canNext = !!type && !!sites;
+  return h("div", { className: "fade-in" },
+    h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-1" }, "Tell us about your venue"),
+    h("p", { className: "text-muted mb-6" }, "So we can match you to the right peer group."),
+
+    h("div", { className: "mb-6" },
+      h("div", { className: "text-sm font-semibold mb-3" }, "Venue type"),
+      h("div", { className: "grid grid-cols-2 md:grid-cols-3 gap-3" },
+        VENUE_TYPES.map(v => h(Card, {
+          key: v.id,
+          selected: type === v.id,
+          onClick: () => onChange({ ...value, type: v.id }),
+          compact: true,
+        },
+          h("div", { className: "flex items-center gap-2" },
+            h("span", { className: "text-xl" }, v.emoji),
+            h("span", { className: "font-medium text-sm" }, v.label)
+          )
+        ))
+      ),
+    ),
+    h("div", null,
+      h("div", { className: "text-sm font-semibold mb-3" }, "Number of sites"),
+      h("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3" },
+        SITE_OPTIONS.map(s => h(Card, {
+          key: s.id,
+          selected: sites === s.id,
+          onClick: () => onChange({ ...value, sites: s.id }),
+          compact: true,
+        }, h("div", { className: "text-center font-medium" }, s.label)))
+      ),
+    ),
+    h("div", { className: "mt-10 flex justify-end" },
+      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
+    )
+  );
+}
+
+function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext, onBack, canBack }) {
+  const selected = value.tools || [];
+  const none = value.none === true;
+  const other = value.other || "";
+  return h("div", { className: "fade-in" },
+    h("div", { className: "flex items-center gap-2 text-xs font-semibold text-toast uppercase tracking-wider mb-2" },
+      h("span", null, category.icon),
+      h("span", null, category.label)
+    ),
+    h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-1" },
+      `What do you use for ${category.label.toLowerCase().replace(/,/g, "").split(" & ")[0]}?`
+    ),
+    h("p", { className: "text-muted mb-6" }, `${category.hint}. Pick all that apply — or skip if none.`),
+
+    h("div", { className: "grid grid-cols-2 md:grid-cols-3 gap-3 mb-4" },
+      category.options.map(opt => {
+        const isSel = !none && selected.includes(opt);
+        return h(Card, {
+          key: opt,
+          selected: isSel,
+          onClick: () => onToggle(opt),
+          compact: true,
+        },
+          h("div", { className: "flex items-center justify-between gap-2" },
+            h("span", { className: "font-medium text-sm" }, opt),
+            isSel && h("span", { className: "text-toast" }, "✓")
+          )
+        );
+      })
+    ),
+
+    // Other free-text
+    h("div", { className: "rounded-2xl border border-dashed border-line bg-white/60 p-4 mb-4" },
+      h("label", { className: "block text-sm font-semibold mb-2" }, "Using something else? Type it below"),
+      h("input", {
+        type: "text",
+        value: other,
+        onChange: e => onOtherChange(e.target.value),
+        placeholder: "e.g. a bespoke in-house tool, a vendor not listed…",
+        className: "w-full px-4 py-2.5 rounded-xl border border-line focus:border-ink outline-none text-sm bg-white",
+        disabled: none,
+      }),
+      h("p", { className: "text-xs text-muted mt-1" },
+        "Separate multiple with a comma. We'll flag unlisted vendors for the Tech on Toast team to review."
+      )
+    ),
+
+    h("button", {
+      onClick: onNone,
+      className: `text-sm underline ${none ? "text-toast font-semibold" : "text-muted hover:text-ink"}`,
+    }, none ? "✓ We don't use anything here" : "We don't use anything here / not sure"),
+
+    h("div", { className: "mt-10 flex items-center justify-between" },
+      canBack ? h(GhostBtn, { onClick: onBack }, "← Back") : h("span"),
+      h(PrimaryBtn, { onClick: onNext }, "Continue →")
+    )
+  );
+}
+
+function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
+  const { firstName, email, company, consent, hp } = value;
+  const emailOk = /.+@.+\..+/.test(email || "");
+  const submitting = submitState && submitState.status === "submitting";
+  const canSubmit = firstName && emailOk && company && consent && !submitting;
+  return h("div", { className: "fade-in max-w-xl mx-auto" },
+    h("div", { className: "rounded-2xl bg-white border border-line p-8" },
+      h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "Almost there"),
+      h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your benchmark is ready"),
+      preview && h("div", { className: "rounded-xl bg-cream border border-line p-4 mb-5" },
+        h("div", { className: "text-xs text-muted mb-1" }, "Preview"),
+        h("div", { className: "font-display text-2xl font-bold text-ink" },
+          `${fmtGBP(preview.totalGbp)}/yr + ${preview.totalHrs} hrs/wk`,
+        ),
+        h("div", { className: "text-sm text-muted" },
+          `estimated upside from your ${preview.gapCount} biggest gap${preview.gapCount === 1 ? "" : "s"}`
+        ),
+      ),
+      h("p", { className: "text-muted mb-6" },
+        "Drop your details to unlock the full report: score, per-category comparison, and a costed roadmap for your top 3 gaps."
+      ),
+      h("div", { className: "space-y-3" },
+        h("input", {
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          placeholder: "First name",
+          value: firstName || "",
+          onChange: e => onChange({ ...value, firstName: e.target.value }),
+        }),
+        h("input", {
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          placeholder: "Work email",
+          type: "email",
+          value: email || "",
+          onChange: e => onChange({ ...value, email: e.target.value }),
+        }),
+        h("input", {
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-ink outline-none",
+          placeholder: "Venue / company name",
+          value: company || "",
+          onChange: e => onChange({ ...value, company: e.target.value }),
+        }),
+        h("label", { className: "flex items-start gap-2 text-sm text-muted pt-1" },
+          h("input", {
+            type: "checkbox",
+            className: "mt-1",
+            checked: !!consent,
+            onChange: e => onChange({ ...value, consent: e.target.checked }),
+          }),
+          h("span", null,
+            "OK to send my report by email and occasionally share relevant hospitality tech insights. Unsubscribe any time."
+          )
+        ),
+        // Honeypot — hidden from humans, bots fill it and we drop the submission.
+        h("input", {
+          type: "text",
+          tabIndex: -1,
+          autoComplete: "off",
+          "aria-hidden": "true",
+          className: "absolute left-[-9999px] top-auto w-px h-px opacity-0",
+          value: hp || "",
+          onChange: e => onChange({ ...value, hp: e.target.value }),
+        }),
+      ),
+      submitState && submitState.status === "error" && h("div", {
+        className: "mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3",
+      }, "Sorry — couldn't save your submission. ", submitState.error || "Please try again."),
+      h("div", { className: "mt-6 flex items-center justify-between" },
+        h(GhostBtn, { onClick: onBack }, "← Back"),
+        h(PrimaryBtn, { onClick: onSubmit, disabled: !canSubmit },
+          submitting ? "Sending…" : "Show my report →"
+        )
+      )
+    ),
+    h("p", { className: "text-center text-xs text-muted mt-4" },
+      "We'll never share your data with vendors without your say-so."
+    )
+  );
+}
+
+// ---------- REPORT ----------
+function buildReport({ venue, stack }) {
+  const segment = segmentFor(venue.type, venue.sites);
+  const bench = BENCHMARKS[segment];
+  const mult = siteMultiplier(venue.sites);
+
+  const covered = CATEGORIES.filter(c => {
+    const s = stack[c.id] || {};
+    return (s.tools || []).length > 0 || (s.other && s.other.trim());
+  });
+  const coverage = Math.round((covered.length / CATEGORIES.length) * 100);
+
+  const gaps = CATEGORIES
+    .filter(c => {
+      const s = stack[c.id] || {};
+      return (s.tools || []).length === 0 && !(s.other && s.other.trim());
+    })
+    .map(c => {
+      const peerPct = bench.adoption[c.id] || 0;
+      const roi = ROI[c.id] || { hrs: 0, gbp: 0, why: "" };
+      return {
+        category: c,
+        peerPct,
+        hrsPerWeek: roi.hrs * mult,
+        gbpPerYear: roi.gbp * mult,
+        why: roi.why,
+      };
+    })
+    .filter(g => g.peerPct >= 35)
+    .sort((a, b) => b.gbpPerYear - a.gbpPerYear);
+
+  const totalGbp = gaps.reduce((t, g) => t + g.gbpPerYear, 0);
+  const totalHrs = gaps.reduce((t, g) => t + g.hrsPerWeek, 0);
+
+  const matchScore = Math.min(100, Math.round(coverage * 0.7 + (100 - gaps.length * 12) * 0.3));
+
+  return { segment, bench, coverage, gaps, matchScore, covered, totalGbp, totalHrs };
+}
+
+function ScoreRing({ score }) {
+  const r = 54, c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, score));
+  const off = c - (pct / 100) * c;
+  return h("div", { className: "relative w-32 h-32" },
+    h("svg", { viewBox: "0 0 120 120", className: "w-full h-full -rotate-90" },
+      h("circle", { cx: 60, cy: 60, r, stroke: "#E7E2DB", strokeWidth: 10, fill: "none" }),
+      h("circle", {
+        cx: 60, cy: 60, r, stroke: "#FF6A3D", strokeWidth: 10, fill: "none",
+        strokeLinecap: "round",
+        strokeDasharray: c, strokeDashoffset: off,
+        style: { transition: "stroke-dashoffset 900ms ease-out" },
+      })
+    ),
+    h("div", { className: "absolute inset-0 flex flex-col items-center justify-center" },
+      h("div", { className: "font-display text-3xl font-bold" }, score),
+      h("div", { className: "text-xs text-muted" }, "/ 100")
+    )
+  );
+}
+
+function Report({ venue, stack, lead, onReset }) {
+  const { segment, bench, coverage, gaps, matchScore, totalGbp, totalHrs } =
+    useMemo(() => buildReport({ venue, stack }), [venue, stack]);
+
+  const segmentLabel = {
+    "indie-small": "independent single-site restaurants",
+    "indie-group": "multi-site restaurant groups",
+    "bar-pub": "bars & pubs",
+    "qsr": "QSR & fast casual operators",
+    "hotel": "hotel F&B teams",
+  }[segment];
+
+  return h("div", { className: "fade-in" },
+
+    // ROI headline strip
+    h("div", { className: "rounded-3xl bg-ink text-cream p-8 md:p-10 mb-6" },
+      h("div", { className: "flex flex-col md:flex-row md:items-center gap-8" },
+        h(ScoreRing, { score: matchScore }),
+        h("div", { className: "flex-1" },
+          h("div", { className: "text-xs uppercase tracking-wider text-toast font-semibold mb-1" }, "Estimated annual upside"),
+          h("div", { className: "flex flex-wrap items-end gap-x-6 gap-y-1 mb-2" },
+            h("div", { className: "font-display text-4xl md:text-5xl font-bold text-toast leading-none" },
+              fmtGBP(totalGbp)
+            ),
+            h("div", { className: "text-cream/70 text-sm" }, "per year across your estate")
+          ),
+          h("div", { className: "flex flex-wrap items-end gap-x-6 gap-y-1 mb-3" },
+            h("div", { className: "font-display text-2xl font-bold" },
+              `+${totalHrs} hours`
+            ),
+            h("div", { className: "text-cream/70 text-sm" }, "of manager time back every week")
+          ),
+          h("p", { className: "text-cream/80 text-sm" },
+            lead.firstName ? `${lead.firstName}, based on how ${lead.company || "your venue"} stacks up vs. ${segmentLabel}. ` : "",
+            `Your stack covers ${coverage}% of the 10 core categories — `,
+            gaps.length > 0
+              ? `${gaps.length} gap${gaps.length === 1 ? "" : "s"} are leaving real money and hours on the table.`
+              : "you're running a complete stack. Nice work."
+          )
+        )
+      ),
+      totalGbp > 0 && h("div", { className: "mt-6 text-xs text-cream/50" },
+        "Estimates based on industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional — actual results vary by operator, menu and contracts."
+      )
+    ),
+
+    // Top ROI opportunities (the money shot)
+    gaps.length > 0 && h("div", { className: "mb-8" },
+      h("div", { className: "flex items-center justify-between mb-3" },
+        h("h3", { className: "font-display text-xl font-bold" }, "Where the opportunity sits"),
+        h("div", { className: "text-xs text-muted" }, "ranked by £ upside")
+      ),
+      h("div", { className: "grid gap-3" },
+        gaps.slice(0, 5).map((g, i) => h("div", {
+          key: g.category.id,
+          className: "rounded-2xl bg-white border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
+        },
+          h("div", { className: "flex items-center gap-3 md:w-52 shrink-0" },
+            h("div", { className: "w-9 h-9 rounded-full bg-toast/15 text-toast flex items-center justify-center font-bold text-sm" }, `#${i + 1}`),
+            h("div", null,
+              h("div", { className: "text-xs text-muted" }, g.category.icon + " " + g.category.label),
+              h("div", { className: "font-semibold" }, `${g.peerPct}% of peers have this`)
+            )
+          ),
+          h("div", { className: "flex-1" },
+            h("div", { className: "flex flex-wrap gap-x-5 gap-y-1 mb-2" },
+              h("div", null,
+                h("div", { className: "text-xs text-muted" }, "Potential £ saved / yr"),
+                h("div", { className: "font-display font-bold text-mint text-lg" }, fmtGBP(g.gbpPerYear))
+              ),
+              h("div", null,
+                h("div", { className: "text-xs text-muted" }, "Hrs saved / wk"),
+                h("div", { className: "font-display font-bold text-lg" }, `+${g.hrsPerWeek}`)
+              ),
+            ),
+            h("div", { className: "text-sm text-muted" }, g.why)
+          )
+        ))
+      ),
+    ),
+
+    // Category breakdown
+    h("h3", { className: "font-display text-xl font-bold mb-3" }, "Category-by-category"),
+    h("div", { className: "grid gap-3 mb-8" },
+      CATEGORIES.map(c => {
+        const s = stack[c.id] || {};
+        const tools = s.tools || [];
+        const other = (s.other || "").trim();
+        const peerPct = bench.adoption[c.id] || 0;
+        const topPeer = (bench.topTools[c.id] || []).slice(0, 3);
+        const hasTool = tools.length > 0 || !!other;
+        const youList = [...tools, ...(other ? [other] : [])];
+        return h("div", {
+          key: c.id,
+          className: "rounded-2xl bg-white border border-line p-5",
+        },
+          h("div", { className: "flex items-start justify-between gap-4 mb-3" },
+            h("div", null,
+              h("div", { className: "flex items-center gap-2" },
+                h("span", { className: "text-xl" }, c.icon),
+                h("div", { className: "font-semibold" }, c.label),
+              ),
+              h("div", { className: "text-sm text-muted mt-1" },
+                hasTool
+                  ? `You use: ${youList.join(", ")}`
+                  : "You haven't got a tool here."
+              )
+            ),
+            h("div", { className: "text-right" },
+              h("div", { className: "text-xs text-muted" }, "Peer adoption"),
+              h("div", { className: `font-display text-xl font-bold ${peerPct >= 70 ? "text-toast" : ""}` }, `${peerPct}%`)
+            )
+          ),
+          h("div", { className: "h-1.5 bg-line rounded-full overflow-hidden mb-3" },
+            h("div", { className: "h-full bg-toast bar-fill", style: { width: `${peerPct}%` } })
+          ),
+          topPeer.length > 0 && h("div", { className: "flex flex-wrap gap-2" },
+            topPeer.map(([name, pct]) => {
+              const isYours = tools.includes(name);
+              return h("span", {
+                key: name,
+                className: `text-xs px-2.5 py-1 rounded-full border
+                  ${isYours
+                    ? "bg-ink text-cream border-ink"
+                    : "bg-cream text-muted border-line"}`,
+              }, `${name} · ${pct}%${isYours ? " · you" : ""}`);
+            })
+          )
+        );
+      })
+    ),
+
+    // CTA
+    h("div", { className: "rounded-2xl bg-white border border-line p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4" },
+      h("div", null,
+        h("div", { className: "font-display text-lg font-bold" }, "Want help closing these gaps?"),
+        h("div", { className: "text-sm text-muted" }, "We'll intro you to 2–3 vetted Tech on Toast partners for your priority gaps — no sales spam, just the right shortlist.")
+      ),
+      h("div", { className: "flex gap-2" },
+        h("button", {
+          className: "px-4 py-2.5 rounded-full border border-line text-sm font-medium hover:border-ink",
+          onClick: onReset,
+        }, "Start over"),
+        h("a", {
+          href: `mailto:hello@techontoast.community?subject=My%20Stack%20Benchmark%20Follow-up&body=Hi%20team%20%E2%80%94%20I'd%20love%20an%20intro%20on%20my%20top%20gaps%20from%20the%20benchmark.`,
+          className: "px-5 py-2.5 rounded-full bg-ink text-cream text-sm font-semibold hover:bg-toast hover:text-ink",
+        }, "Book a call →"),
+      )
+    ),
+
+    h("div", { className: "text-center text-xs text-muted mt-8" },
+      "Benchmarks based on Tech on Toast community data. ROI estimates are directional, not a vendor endorsement or guarantee."
+    )
+  );
+}
+
+// ---------- APP ----------
+function App() {
+  const [step, setStep] = useState(0);
+  const [venue, setVenue] = useState({ type: "", sites: "" });
+  const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
+  const [lead, setLead] = useState({ firstName: "", email: "", company: "", consent: false, hp: "" });
+
+  const totalCategorySteps = CATEGORIES.length;
+  const VENUE_STEP = 1;
+  const FIRST_CAT_STEP = 2;
+  const LAST_CAT_STEP = FIRST_CAT_STEP + totalCategorySteps - 1;
+  const GATE_STEP = LAST_CAT_STEP + 1;
+  const REPORT_STEP = GATE_STEP + 1;
+
+  const progressTotal = 1 + totalCategorySteps + 1;
+  const progressStep = step === 0 ? 0
+    : step === VENUE_STEP ? 1
+    : step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP ? 1 + (step - FIRST_CAT_STEP + 1)
+    : step === GATE_STEP ? progressTotal
+    : progressTotal;
+
+  const currentCategory = step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP
+    ? CATEGORIES[step - FIRST_CAT_STEP] : null;
+
+  function ensureCat(catId) {
+    setStack(prev => prev[catId] ? prev : { ...prev, [catId]: { tools: [], other: "", none: false } });
+  }
+  function toggleTool(catId, tool) {
+    setStack(prev => {
+      const cur = prev[catId] || { tools: [], other: "", none: false };
+      const exists = cur.tools.includes(tool);
+      return {
+        ...prev,
+        [catId]: {
+          ...cur,
+          none: false,
+          tools: exists ? cur.tools.filter(t => t !== tool) : [...cur.tools, tool],
+        },
+      };
+    });
+  }
+  function toggleNone(catId) {
+    setStack(prev => {
+      const cur = prev[catId] || { tools: [], other: "", none: false };
+      const turningOn = !cur.none;
+      return { ...prev, [catId]: { tools: turningOn ? [] : cur.tools, other: turningOn ? "" : cur.other, none: turningOn } };
+    });
+  }
+  function setOther(catId, text) {
+    setStack(prev => {
+      const cur = prev[catId] || { tools: [], other: "", none: false };
+      return { ...prev, [catId]: { ...cur, other: text, none: text ? false : cur.none } };
+    });
+  }
+
+  // Preview-tease for gate step
+  const gatePreview = useMemo(() => {
+    if (step !== GATE_STEP) return null;
+    const r = buildReport({ venue, stack });
+    return { totalGbp: r.totalGbp, totalHrs: r.totalHrs, gapCount: r.gaps.length };
+  }, [step, venue, stack]);
+
+  const [submitState, setSubmitState] = useState({ status: "idle", error: "" });
+
+  async function submitLead() {
+    // Honeypot: if filled by a bot, silently advance without sending.
+    if (lead.hp) { setStep(REPORT_STEP); return; }
+    const r = buildReport({ venue, stack });
+    const payload = {
+      venue_type: venue.type,
+      sites: venue.sites,
+      stack,
+      first_name: lead.firstName,
+      email: lead.email,
+      company: lead.company,
+      consent: !!lead.consent,
+      score: r.matchScore,
+      coverage_pct: r.coverage,
+      total_gbp_per_year: r.totalGbp,
+      total_hrs_per_week: r.totalHrs,
+      gap_count: r.gaps.length,
+      gap_categories: r.gaps.map(g => g.category.label),
+      segment: r.segment,
+    };
+    setSubmitState({ status: "submitting", error: "" });
+    try {
+      if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith("REPLACE_")) {
+        await postSubmission(payload);
+      } else {
+        console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set — skipping network submission");
+      }
+      setSubmitState({ status: "idle", error: "" });
+      setStep(REPORT_STEP);
+    } catch (err) {
+      setSubmitState({ status: "error", error: err.message || "Submission failed" });
+    }
+  }
+  function reset() {
+    setStep(0); setVenue({ type: "", sites: "" }); setStack({});
+    setLead({ firstName: "", email: "", company: "", consent: false, hp: "" });
+    setSubmitState({ status: "idle", error: "" });
+  }
+
+  const showProgress = step >= VENUE_STEP && step <= GATE_STEP;
+
+  return h("div", { className: "min-h-screen" },
+    h("header", { className: "border-b border-line bg-cream/80 backdrop-blur sticky top-0 z-10" },
+      h("div", { className: "max-w-5xl mx-auto px-5 py-3 flex items-center justify-between" },
+        h("div", { className: "flex items-center gap-3" },
+          h("img", {
+            src: "tech-on-toast-logo.svg",
+            alt: "Tech on Toast",
+            className: "h-10 w-auto",
+          }),
+          h("div", { className: "hidden sm:block h-6 w-px bg-line" }),
+          h("div", { className: "hidden sm:block font-display font-semibold text-sm leading-tight" },
+            "Stack",
+            h("br"),
+            "Benchmark"
+          ),
+        ),
+        step !== 0 && h(GhostBtn, { onClick: reset }, "Restart")
+      )
+    ),
+
+    h("main", { className: "max-w-3xl mx-auto px-5 py-10 md:py-14" },
+      showProgress && h("div", { className: "mb-8" }, h(Progress, { step: progressStep, total: progressTotal })),
+
+      step === 0 && h(Intro, { onStart: () => setStep(VENUE_STEP) }),
+
+      step === VENUE_STEP && h(VenueStep, {
+        value: venue,
+        onChange: setVenue,
+        onNext: () => { ensureCat(CATEGORIES[0].id); setStep(FIRST_CAT_STEP); },
+      }),
+
+      currentCategory && h(CategoryStep, {
+        category: currentCategory,
+        value: stack[currentCategory.id] || { tools: [], other: "", none: false },
+        onToggle: (t) => toggleTool(currentCategory.id, t),
+        onNone: () => toggleNone(currentCategory.id),
+        onOtherChange: (t) => setOther(currentCategory.id, t),
+        onNext: () => setStep(step + 1),
+        onBack: () => setStep(step - 1),
+        canBack: step > FIRST_CAT_STEP,
+      }),
+
+      step === GATE_STEP && h(GateStep, {
+        value: lead,
+        onChange: setLead,
+        onSubmit: submitLead,
+        onBack: () => setStep(step - 1),
+        preview: gatePreview,
+        submitState: submitState,
+      }),
+
+      step === REPORT_STEP && h(Report, { venue, stack, lead, onReset: reset }),
+    ),
+
+    h("footer", { className: "max-w-5xl mx-auto px-5 py-10 text-center text-xs text-muted" },
+      "© Tech on Toast · Built for the UK hospitality community"
+    )
+  );
+}
+
+createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>
