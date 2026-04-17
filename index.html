@@ -128,13 +128,16 @@ const CATEGORIES = [
 // ---------- ROI MODEL ----------
 // Per-site annual savings & weekly hours saved when an operator adopts a tool in this category.
 // Numbers are directional industry benchmarks for a typical UK site doing ~£800k–£1.2m revenue.
+// Conservative per-site benchmarks. Intentionally at the low end of what operators
+// typically claim. Gap savings use the full figure; switching/renegotiation claws
+// back only ~10% of it (most of the value is already captured if you have a tool).
 const ROI = {
-  pos:       { hrs: 2, gbp: 1500,  why: "Modern EPOS integrations kill 1–3 hrs/wk of manual reconciliation and data re-entry." },
-  payments:  { hrs: 2, gbp: 4800,  why: "Modern acquirers typically cut card fees 0.3–0.5% (~£3–5k/site/yr on £1m revenue). TRONC saves ~13.8% NI on distributed tips." },
-  workforce: { hrs: 8, gbp: 14000, why: "Smart rotas trim 3–5% off wage cost. Payroll in hours not days. Less admin, more floor time." },
-  inventory: { hrs: 6, gbp: 18500, why: "2–4 point GP improvement from recipe costing + variance alerts. Weekly stocktake drops from a day to an hour." },
-  loyalty:   { hrs: 2, gbp: 9200,  why: "Known guests visit 10–15% more than anonymous ones. Email/SMS to a real database beats paid ads for ROI." },
-  learning:  { hrs: 2, gbp: 3600,  why: "Structured onboarding cuts time-to-competency by 30–50%. Tracked compliance = no mystery gaps at audit time." },
+  pos:       { hrs: 1, gbp: 800,   why: "Cleaner EPOS integrations cut 1–2 hrs/wk of manual reconciliation and data re-entry." },
+  payments:  { hrs: 1, gbp: 2400,  why: "Modern acquirers typically cut card fees 0.2–0.3% (~£2–3k/site/yr on £1m revenue). TRONC saves ~13.8% NI on distributed tips." },
+  workforce: { hrs: 4, gbp: 7500,  why: "Smart rotas trim 1.5–2.5% off wage cost at most operators. Payroll in hours not days." },
+  inventory: { hrs: 4, gbp: 9500,  why: "1–2 point GP improvement from recipe costing + variance alerts. Weekly stocktake drops from a day to an hour." },
+  loyalty:   { hrs: 1, gbp: 4200,  why: "Known guests visit modestly more than anonymous ones. Email/SMS to a real database beats paid ads for ROI." },
+  learning:  { hrs: 1, gbp: 1600,  why: "Structured onboarding cuts time-to-competency meaningfully. Tracked compliance = no mystery gaps at audit time." },
 };
 
 function siteMultiplier(sites) {
@@ -407,7 +410,7 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
       h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "Almost there"),
       h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your benchmark is ready"),
       preview && h("div", { className: "rounded-xl bg-canvas border border-line p-4 mb-5" },
-        h("div", { className: "text-xs text-muted mb-1 uppercase tracking-wider font-semibold" }, "Your estimated upside"),
+        h("div", { className: "text-xs text-muted mb-1 uppercase tracking-wider font-semibold" }, "Conservative upside estimate"),
         h("div", { className: "font-display text-2xl font-bold text-brand" },
           `${fmtGBP(preview.totalGbp)}/yr + ${preview.totalHrs} hrs/wk`,
         ),
@@ -517,7 +520,7 @@ function buildReport({ venue, stack }) {
 
   // Switches: categories where they DO have a tool. A portion of ROI is still recoverable
   // via renegotiating contracts, consolidating duplicates, or switching to a modern vendor.
-  const SWITCH_FACTOR = 0.25; // capture ~25% of full category ROI via switch/renegotiate
+  const SWITCH_FACTOR = 0.10; // most value is already captured if you have a tool, ~10% recoverable via renegotiation/switching
   const switches = CATEGORIES
     .filter(c => {
       const s = stack[c.id] || {};
@@ -629,7 +632,7 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
       h("div", { className: "flex flex-col md:flex-row md:items-center gap-8" },
         h(ScoreRing, { score: matchScore }),
         h("div", { className: "flex-1" },
-          h("div", { className: "text-xs uppercase tracking-wider text-brand font-semibold mb-1" }, "Estimated annual upside"),
+          h("div", { className: "text-xs uppercase tracking-wider text-brand font-semibold mb-1" }, "Conservative annual upside"),
           h("div", { className: "flex flex-wrap items-end gap-x-6 gap-y-1 mb-2" },
             h("div", { className: "font-display text-4xl md:text-5xl font-bold text-brand leading-none" },
               fmtGBP(totalGbp)
@@ -656,7 +659,7 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
         )
       ),
       totalGbp > 0 && h("div", { className: "mt-6 text-xs text-cream/50" },
-        "Estimates based on industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional. Actual results vary by operator, menu and contracts."
+        "Conservative estimates based on lower-end industry benchmarks for UK venues doing ~£0.8–1.2m revenue per site. Directional only. Actual results vary widely by operator, menu, contracts and team buy-in."
       )
     ),
 
