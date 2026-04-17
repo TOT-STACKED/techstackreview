@@ -50,7 +50,7 @@ const h = React.createElement;
 // ---------- SUPABASE CONFIG ----------
 // Anon key is safe to expose on the frontend — the RLS policy on the `submissions` table restricts it to INSERT only.
 const SUPABASE_URL = "https://kohnakdevwfudzgfjmab.supabase.co";
-const SUPABASE_ANON_KEY = "REPLACE_WITH_SUPABASE_ANON_KEY";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvaG5ha2RldndmdWR6Z2ZqbWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MTQwMDYsImV4cCI6MjA5MTk5MDAwNn0.1_SzL7KcimLJrumUzQxpoYZS8GiOKASzJkKHBC1iqr0";
 
 async function postSubmission(payload) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/submissions`, {
@@ -111,10 +111,17 @@ const CATEGORIES = [
   },
   {
     id: "people",
-    label: "Rotas, Payroll, HR & Training",
-    hint: "Scheduling, payroll, staffing, onboarding, training, team comms",
+    label: "Rotas, Payroll, HR & Staffing",
+    hint: "Scheduling, payroll, HR, flex staffing",
     icon: "👥",
-    options: ["Bizimply", "Deputy", "Planday", "Fourth", "Harri", "Rotaready", "s4labour", "Sona", "Brigad", "Workfeed", "Workforce", "PayCaptain", "All Gravy", "Onsi", "Level FT", "People Flo", "Limber", "Talent Unlimited", "YoungOnes", "Tayl", "CPL Learning", "5Mins AI", "Blink", "totti", "Zenzap", "CrunchTime"],
+    options: ["Bizimply", "Deputy", "Planday", "Fourth", "Harri", "Rotaready", "s4labour", "Sona", "Brigad", "Workfeed", "Workforce", "PayCaptain", "All Gravy", "Onsi", "Level FT", "People Flo", "Limber", "Talent Unlimited", "YoungOnes", "CrunchTime"],
+  },
+  {
+    id: "training",
+    label: "Training, L&D & Team Comms",
+    hint: "Learning, onboarding, compliance, internal comms",
+    icon: "🎓",
+    options: ["Tayl", "CPL Learning", "5Mins AI", "Blink", "totti", "Zenzap"],
   },
   {
     id: "loyalty",
@@ -155,7 +162,8 @@ const ROI = {
   reservations: { hrs: 3, gbp: 6200,  why: "Deposit-backed bookings cut no-shows from ~10% to under 3%. Better cover management adds 2–4% to revenue." },
   ordering:     { hrs: 6, gbp: 5400,  why: "One kitchen screen instead of 4 delivery tablets. Fewer missed orders, less menu admin, staff back on the floor." },
   stock:        { hrs: 6, gbp: 18500, why: "2–4 point GP improvement from recipe costing + variance alerts. Weekly stocktake drops from a day to an hour." },
-  people:       { hrs: 8, gbp: 14000, why: "Smart rotas trim 3–5% off wage cost. Payroll in hours not days. Faster onboarding = less turnover drag." },
+  people:       { hrs: 8, gbp: 14000, why: "Smart rotas trim 3–5% off wage cost. Payroll in hours not days. Less admin, more floor time." },
+  training:     { hrs: 2, gbp: 3600,  why: "Structured onboarding cuts time-to-competency by 30–50%. Tracked compliance = no mystery gaps at audit time." },
   loyalty:      { hrs: 2, gbp: 9200,  why: "Known guests visit 10–15% more than anonymous ones. Email/SMS to a real database beats paid ads for ROI." },
   feedback:     { hrs: 3, gbp: 4400,  why: "Catch unhappy guests in under an hour — recover 30–50% vs. losing them silently. Fewer public 1★ reviews." },
   finance:      { hrs: 4, gbp: 3200,  why: "Daily flash P&L surfaces variance before it costs you a week. 10+ hrs/month on reconciliation goes away." },
@@ -175,7 +183,7 @@ function fmtGBP(n) {
 // Plausible peer-adoption percentages + top tools per segment. Swap for real community data after launch.
 const BENCHMARKS = {
   "indie-small": {
-    adoption: { pos: 97, payments: 99, reservations: 58, ordering: 71, stock: 34, people: 48, loyalty: 32, feedback: 28, finance: 88, it: 44 },
+    adoption: { pos: 97, payments: 99, reservations: 58, ordering: 71, stock: 34, people: 48, training: 22, loyalty: 32, feedback: 28, finance: 88, it: 44 },
     topTools: {
       pos: [["Square", 24], ["Lightspeed", 18], ["SumUp POS", 12]],
       payments: [["Dojo", 34], ["SumUp", 21], ["sunday", 12]],
@@ -183,6 +191,7 @@ const BENCHMARKS = {
       ordering: [["Deliveroo", 58], ["Uber Eats", 41], ["Slerp", 11]],
       stock: [["MarketMan", 9], ["Growyze", 7]],
       people: [["Deputy", 14], ["Planday", 11], ["Bizimply", 9]],
+      training: [["Tayl", 6], ["CPL Learning", 5]],
       loyalty: [["Stampede", 11], ["Airship", 8]],
       feedback: [["Feed It Back", 8], ["Trail", 5]],
       finance: [["Xero", 58], ["QuickBooks", 22]],
@@ -190,7 +199,7 @@ const BENCHMARKS = {
     },
   },
   "indie-group": {
-    adoption: { pos: 99, payments: 99, reservations: 82, ordering: 78, stock: 71, people: 86, loyalty: 61, feedback: 58, finance: 94, it: 78 },
+    adoption: { pos: 99, payments: 99, reservations: 82, ordering: 78, stock: 71, people: 86, training: 58, loyalty: 61, feedback: 58, finance: 94, it: 78 },
     topTools: {
       pos: [["Zonal", 28], ["Lightspeed", 19], ["Toast", 12]],
       payments: [["Dojo", 38], ["sunday", 19], ["Adyen", 14]],
@@ -198,6 +207,7 @@ const BENCHMARKS = {
       ordering: [["Deliverect", 41], ["Vita Mojo", 22], ["Slerp", 14]],
       stock: [["Nory", 18], ["Apicbase", 14], ["MarketMan", 12]],
       people: [["Harri", 24], ["Fourth", 18], ["Rotaready", 14], ["s4labour", 11]],
+      training: [["Tayl", 18], ["CPL Learning", 14], ["5Mins AI", 9]],
       loyalty: [["Airship", 24], ["Acteol", 14], ["Toggle", 12]],
       feedback: [["Feed It Back", 21], ["HGEM", 18], ["Trail", 14]],
       finance: [["Xero", 54], ["Tenzo", 18], ["Dext", 14]],
@@ -205,7 +215,7 @@ const BENCHMARKS = {
     },
   },
   "bar-pub": {
-    adoption: { pos: 97, payments: 99, reservations: 54, ordering: 44, stock: 51, people: 71, loyalty: 38, feedback: 41, finance: 90, it: 68 },
+    adoption: { pos: 97, payments: 99, reservations: 54, ordering: 44, stock: 51, people: 71, training: 38, loyalty: 38, feedback: 41, finance: 90, it: 68 },
     topTools: {
       pos: [["Zonal", 31], ["Tevalis", 18], ["Lightspeed", 14]],
       payments: [["Dojo", 32], ["DNA Payments", 18], ["Adyen", 12]],
@@ -213,6 +223,7 @@ const BENCHMARKS = {
       ordering: [["Deliveroo", 28], ["Uber Eats", 21]],
       stock: [["Purchase Warrior (triSaaS)", 14], ["MarketMan", 11]],
       people: [["Harri", 18], ["Bizimply", 16], ["s4labour", 14]],
+      training: [["CPL Learning", 14], ["Tayl", 9]],
       loyalty: [["Stampede", 14], ["Krowd", 9], ["Airship", 9]],
       feedback: [["HGEM", 18], ["Feed It Back", 14]],
       finance: [["Xero", 49], ["Sage", 21]],
@@ -220,7 +231,7 @@ const BENCHMARKS = {
     },
   },
   "qsr": {
-    adoption: { pos: 99, payments: 99, reservations: 14, ordering: 96, stock: 78, people: 84, loyalty: 71, feedback: 54, finance: 93, it: 82 },
+    adoption: { pos: 99, payments: 99, reservations: 14, ordering: 96, stock: 78, people: 84, training: 62, loyalty: 71, feedback: 54, finance: 93, it: 82 },
     topTools: {
       pos: [["Toast", 22], ["Vita Mojo", 18], ["Tissl", 14]],
       payments: [["Stripe", 31], ["Adyen", 22], ["Dojo", 19]],
@@ -228,6 +239,7 @@ const BENCHMARKS = {
       ordering: [["Deliverect", 58], ["Deliveroo", 78], ["Uber Eats", 71]],
       stock: [["Nory", 18], ["MarketMan", 14], ["Apicbase", 11]],
       people: [["Harri", 22], ["Deputy", 17], ["Planday", 14]],
+      training: [["Tayl", 22], ["5Mins AI", 14], ["CPL Learning", 11]],
       loyalty: [["Airship", 24], ["Paytronix", 18], ["Toggle", 14]],
       feedback: [["Feed It Back", 18], ["Yumpingo", 14]],
       finance: [["Tenzo", 21], ["Xero", 38]],
@@ -235,7 +247,7 @@ const BENCHMARKS = {
     },
   },
   "hotel": {
-    adoption: { pos: 94, payments: 99, reservations: 98, ordering: 38, stock: 68, people: 82, loyalty: 71, feedback: 64, finance: 96, it: 92 },
+    adoption: { pos: 94, payments: 99, reservations: 98, ordering: 38, stock: 68, people: 82, training: 71, loyalty: 71, feedback: 64, finance: 96, it: 92 },
     topTools: {
       pos: [["Zonal", 24], ["Lightspeed", 18], ["NFS Hospitality", 14]],
       payments: [["Adyen", 28], ["Dojo", 21]],
@@ -243,6 +255,7 @@ const BENCHMARKS = {
       ordering: [["Deliveroo", 22]],
       stock: [["Purchase Warrior (triSaaS)", 22], ["Apicbase", 14]],
       people: [["Fourth", 28], ["Alkimii", 19], ["Harri", 14]],
+      training: [["CPL Learning", 22], ["Tayl", 14]],
       loyalty: [["Airship", 24], ["Acteol", 18]],
       feedback: [["HGEM", 22], ["Feed It Back", 14]],
       finance: [["Sage", 34], ["Xero", 28]],
@@ -457,12 +470,18 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
       h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "Almost there"),
       h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" }, "Your benchmark is ready"),
       preview && h("div", { className: "rounded-xl bg-cream border border-line p-4 mb-5" },
-        h("div", { className: "text-xs text-muted mb-1" }, "Preview"),
+        h("div", { className: "text-xs text-muted mb-1 uppercase tracking-wider font-semibold" }, "Your estimated upside"),
         h("div", { className: "font-display text-2xl font-bold text-ink" },
           `${fmtGBP(preview.totalGbp)}/yr + ${preview.totalHrs} hrs/wk`,
         ),
-        h("div", { className: "text-sm text-muted" },
-          `estimated upside from your ${preview.gapCount} biggest gap${preview.gapCount === 1 ? "" : "s"}`
+        h("div", { className: "text-sm text-muted mt-1" },
+          preview.gapCount > 0 && preview.switchCount > 0
+            ? `${fmtGBP(preview.gapGbp)} from ${preview.gapCount} gap${preview.gapCount === 1 ? "" : "s"} peers have covered · ${fmtGBP(preview.switchGbp)} from switching or renegotiating what you already run`
+            : preview.gapCount > 0
+            ? `from ${preview.gapCount} gap${preview.gapCount === 1 ? "" : "s"} peers have already covered`
+            : preview.switchCount > 0
+            ? `from switching or renegotiating the ${preview.switchCount} tool${preview.switchCount === 1 ? "" : "s"} you already run`
+            : "your full breakdown is one click away"
         ),
       ),
       h("p", { className: "text-muted mb-6" },
@@ -538,6 +557,7 @@ function buildReport({ venue, stack }) {
   });
   const coverage = Math.round((covered.length / CATEGORIES.length) * 100);
 
+  // Gaps: categories with no tool. Full ROI available if they close the gap.
   const gaps = CATEGORIES
     .filter(c => {
       const s = stack[c.id] || {};
@@ -547,6 +567,7 @@ function buildReport({ venue, stack }) {
       const peerPct = bench.adoption[c.id] || 0;
       const roi = ROI[c.id] || { hrs: 0, gbp: 0, why: "" };
       return {
+        kind: "gap",
         category: c,
         peerPct,
         hrsPerWeek: roi.hrs * mult,
@@ -557,12 +578,48 @@ function buildReport({ venue, stack }) {
     .filter(g => g.peerPct >= 35)
     .sort((a, b) => b.gbpPerYear - a.gbpPerYear);
 
-  const totalGbp = gaps.reduce((t, g) => t + g.gbpPerYear, 0);
-  const totalHrs = gaps.reduce((t, g) => t + g.hrsPerWeek, 0);
+  // Switches: categories where they DO have a tool. A portion of ROI is still recoverable
+  // via renegotiating contracts, consolidating duplicates, or switching to a modern vendor.
+  const SWITCH_FACTOR = 0.25; // capture ~25% of full category ROI via switch/renegotiate
+  const switches = CATEGORIES
+    .filter(c => {
+      const s = stack[c.id] || {};
+      return (s.tools || []).length > 0 || (s.other && s.other.trim());
+    })
+    .map(c => {
+      const s = stack[c.id] || {};
+      const tools = [...(s.tools || []), ...(s.other ? [s.other.trim()] : [])];
+      const roi = ROI[c.id] || { hrs: 0, gbp: 0, why: "" };
+      return {
+        kind: "switch",
+        category: c,
+        tools,
+        hrsPerWeek: Math.round(roi.hrs * SWITCH_FACTOR) * mult,
+        gbpPerYear: Math.round(roi.gbp * SWITCH_FACTOR) * mult,
+        why: c.id === "payments"
+          ? "Card-fee benchmarking alone typically finds 0.1–0.3% savings on acquirer renegotiation."
+          : c.id === "pos"
+          ? "Most operators overpay on legacy POS contracts. A switch or renegotiation cycle trims 15–25%."
+          : c.id === "people"
+          ? "Modern rota optimisers consistently shave 1–2% off wage bill vs. older tools."
+          : c.id === "stock"
+          ? "Auditing whether your stock tool is actually surfacing variance often uncovers 1–2 points of GP."
+          : "Benchmarking contract terms, consolidating overlap, or switching to best-in-class typically unlocks 20–30% of the category ROI.",
+      };
+    })
+    .filter(s => s.gbpPerYear > 0)
+    .sort((a, b) => b.gbpPerYear - a.gbpPerYear);
+
+  const gapGbp = gaps.reduce((t, g) => t + g.gbpPerYear, 0);
+  const gapHrs = gaps.reduce((t, g) => t + g.hrsPerWeek, 0);
+  const switchGbp = switches.reduce((t, s) => t + s.gbpPerYear, 0);
+  const switchHrs = switches.reduce((t, s) => t + s.hrsPerWeek, 0);
+  const totalGbp = gapGbp + switchGbp;
+  const totalHrs = gapHrs + switchHrs;
 
   const matchScore = Math.min(100, Math.round(coverage * 0.7 + (100 - gaps.length * 12) * 0.3));
 
-  return { segment, bench, coverage, gaps, matchScore, covered, totalGbp, totalHrs };
+  return { segment, bench, coverage, gaps, switches, matchScore, covered, totalGbp, totalHrs, gapGbp, gapHrs, switchGbp, switchHrs };
 }
 
 function ScoreRing({ score }) {
@@ -587,7 +644,7 @@ function ScoreRing({ score }) {
 }
 
 function Report({ venue, stack, lead, onReset }) {
-  const { segment, bench, coverage, gaps, matchScore, totalGbp, totalHrs } =
+  const { segment, bench, coverage, gaps, switches, matchScore, totalGbp, totalHrs, gapGbp, switchGbp } =
     useMemo(() => buildReport({ venue, stack }), [venue, stack]);
 
   const segmentLabel = {
@@ -620,9 +677,13 @@ function Report({ venue, stack, lead, onReset }) {
           ),
           h("p", { className: "text-cream/80 text-sm" },
             lead.firstName ? `${lead.firstName}, based on how ${lead.company || "your venue"} stacks up vs. ${segmentLabel}. ` : "",
-            `Your stack covers ${coverage}% of the 10 core categories — `,
-            gaps.length > 0
+            `Your stack covers ${coverage}% of the 11 core categories. `,
+            gaps.length > 0 && switchGbp > 0
+              ? `${fmtGBP(gapGbp)} is sitting in ${gaps.length} open gap${gaps.length === 1 ? "" : "s"}, and another ${fmtGBP(switchGbp)} is recoverable by switching or renegotiating what you already run.`
+              : gaps.length > 0
               ? `${gaps.length} gap${gaps.length === 1 ? "" : "s"} are leaving real money and hours on the table.`
+              : switchGbp > 0
+              ? `You're running a full stack — but ${fmtGBP(switchGbp)} is typically recoverable by switching or renegotiating contracts.`
               : "you're running a complete stack. Nice work."
           )
         )
@@ -632,10 +693,13 @@ function Report({ venue, stack, lead, onReset }) {
       )
     ),
 
-    // Top ROI opportunities (the money shot)
+    // Gap opportunities — where peers have it and you don't
     gaps.length > 0 && h("div", { className: "mb-8" },
-      h("div", { className: "flex items-center justify-between mb-3" },
-        h("h3", { className: "font-display text-xl font-bold" }, "Where the opportunity sits"),
+      h("div", { className: "flex items-end justify-between mb-3" },
+        h("div", null,
+          h("div", { className: "text-xs uppercase tracking-wider text-toast font-semibold mb-1" }, "Gap opportunities"),
+          h("h3", { className: "font-display text-xl font-bold" }, `Close these ${gaps.length} gap${gaps.length === 1 ? "" : "s"} — peers already have them`)
+        ),
         h("div", { className: "text-xs text-muted" }, "ranked by £ upside")
       ),
       h("div", { className: "grid gap-3" },
@@ -662,6 +726,44 @@ function Report({ venue, stack, lead, onReset }) {
               ),
             ),
             h("div", { className: "text-sm text-muted" }, g.why)
+          )
+        ))
+      ),
+    ),
+
+    // Switch / renegotiation opportunities — where they DO have a tool but there's upside in changing
+    switches.length > 0 && h("div", { className: "mb-8" },
+      h("div", { className: "flex items-end justify-between mb-3" },
+        h("div", null,
+          h("div", { className: "text-xs uppercase tracking-wider text-mint font-semibold mb-1" }, "Switch & renegotiate"),
+          h("h3", { className: "font-display text-xl font-bold" }, `Recoverable from what you already run`)
+        ),
+        h("div", { className: "text-xs text-muted" }, `~${fmtGBP(switchGbp)} total`)
+      ),
+      h("div", { className: "grid gap-3" },
+        switches.slice(0, 5).map((s, i) => h("div", {
+          key: s.category.id,
+          className: "rounded-2xl bg-white border border-line p-5 flex flex-col md:flex-row md:items-start gap-4",
+        },
+          h("div", { className: "flex items-center gap-3 md:w-52 shrink-0" },
+            h("div", { className: "w-9 h-9 rounded-full bg-mint/15 text-mint flex items-center justify-center font-bold text-sm" }, `#${i + 1}`),
+            h("div", null,
+              h("div", { className: "text-xs text-muted" }, s.category.icon + " " + s.category.label),
+              h("div", { className: "font-semibold text-sm" }, `You run: ${s.tools.slice(0, 2).join(", ")}${s.tools.length > 2 ? "…" : ""}`)
+            )
+          ),
+          h("div", { className: "flex-1" },
+            h("div", { className: "flex flex-wrap gap-x-5 gap-y-1 mb-2" },
+              h("div", null,
+                h("div", { className: "text-xs text-muted" }, "Recoverable / yr"),
+                h("div", { className: "font-display font-bold text-mint text-lg" }, fmtGBP(s.gbpPerYear))
+              ),
+              h("div", null,
+                h("div", { className: "text-xs text-muted" }, "Hrs / wk"),
+                h("div", { className: "font-display font-bold text-lg" }, `+${s.hrsPerWeek}`)
+              ),
+            ),
+            h("div", { className: "text-sm text-muted" }, s.why)
           )
         ))
       ),
@@ -801,7 +903,14 @@ function App() {
   const gatePreview = useMemo(() => {
     if (step !== GATE_STEP) return null;
     const r = buildReport({ venue, stack });
-    return { totalGbp: r.totalGbp, totalHrs: r.totalHrs, gapCount: r.gaps.length };
+    return {
+      totalGbp: r.totalGbp,
+      totalHrs: r.totalHrs,
+      gapCount: r.gaps.length,
+      gapGbp: r.gapGbp,
+      switchGbp: r.switchGbp,
+      switchCount: r.switches.length,
+    };
   }, [step, venue, stack]);
 
   const [submitState, setSubmitState] = useState({ status: "idle", error: "" });
