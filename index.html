@@ -36,6 +36,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<!-- html2pdf: client-side PDF export of the Stack Review report. Loaded async;
+     the Download button waits for it if needed. ~200kb, matches existing CDN pattern. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" defer></script>
 <style>
   html, body { background: #0d1702; color: #ffffff; }
   .logo-invert { filter: brightness(0) invert(1); }
@@ -674,7 +677,49 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
     "hotel": "hotel F&B teams",
   }[segment];
 
+  const [pdfState, setPdfState] = useState("idle"); // idle | generating
+  async function downloadPdf() {
+    const el = document.getElementById("report-content");
+    if (!el) return;
+    // html2pdf is deferred in <head> — wait up to 5s if it hasn't loaded yet.
+    const deadline = Date.now() + 5000;
+    while (!window.html2pdf && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!window.html2pdf) {
+      alert("PDF library failed to load. Please refresh and try again.");
+      return;
+    }
+    setPdfState("generating");
+    const slug = (lead.company || "stack-review")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "stack-review";
+    const date = new Date().toISOString().slice(0, 10);
+    try {
+      await window.html2pdf()
+        .set({
+          margin:      [8, 8, 8, 8],
+          filename:    `stack-review-${slug}-${date}.pdf`,
+          image:       { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2, backgroundColor: "#0d1702", useCORS: true, logging: false },
+          jsPDF:       { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak:   { mode: ["avoid-all", "css", "legacy"] },
+        })
+        .from(el)
+        .save();
+    } catch (e) {
+      console.error("[stack-review] pdf generation failed", e);
+      alert("Something went wrong generating the PDF. Please try again.");
+    } finally {
+      setPdfState("idle");
+    }
+  }
+
   return h("div", { className: "fade-in" },
+
+    h("div", { id: "report-content" },
 
     // ROI headline strip
     h("div", { className: "rounded-3xl bg-canvas border border-line p-8 md:p-10 mb-6" },
@@ -837,6 +882,23 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
           )
         );
       })
+    ),
+
+    ), // end of #report-content
+
+    // Action row — save the report + talk to Chris
+    h("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3 mb-4" },
+      h("button", {
+        onClick: downloadPdf,
+        disabled: pdfState === "generating",
+        className: `px-6 py-3 rounded-full border border-line bg-canvas text-cream font-semibold hover:border-brand hover:text-brand transition disabled:opacity-60 disabled:cursor-wait`,
+      }, pdfState === "generating" ? "Preparing PDF…" : "↓  Download as PDF"),
+      h("a", {
+        href: "https://app.usemotion.com/meet/chris-cartmell-nqfw/meeting",
+        target: "_blank",
+        rel: "noopener noreferrer",
+        className: "px-6 py-3 rounded-full bg-brand text-ink font-semibold hover:bg-brandDark transition text-center",
+      }, "Book a meeting with Chris →")
     ),
 
     // Deep audit CTA — THE key stage-2 entry point
