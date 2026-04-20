@@ -39,6 +39,20 @@ const segmentLabel = (s?: string) => ({
   "hotel":       "Hotel F&B",
 }[s ?? ""] ?? s ?? "—");
 
+function summarizeNps(productNps: any): { line: string; detractors: string[]; count: number } {
+  const entries = productNps && typeof productNps === "object"
+    ? Object.entries(productNps).filter(([, v]) => typeof v === "number")
+    : [];
+  if (!entries.length) return { line: "_no product NPS captured_", detractors: [], count: 0 };
+  const scores = entries.map(([, v]) => v as number);
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const promoters = scores.filter((s) => s >= 9).length;
+  const detractorPairs = entries.filter(([, v]) => (v as number) <= 6) as Array<[string, number]>;
+  const detractorsList = detractorPairs.map(([name, v]) => `${name} (${v})`);
+  const line = `avg *${avg.toFixed(1)}/10* across ${entries.length} product${entries.length === 1 ? "" : "s"} · ${promoters} promoter${promoters === 1 ? "" : "s"} · ${detractorPairs.length} detractor${detractorPairs.length === 1 ? "" : "s"}`;
+  return { line, detractors: detractorsList, count: entries.length };
+}
+
 function buildSubmissionMessage(r: any) {
   const gaps = Array.isArray(r.gap_categories) ? r.gap_categories : [];
   const gapText = gaps.length ? gaps.join(", ") : "_complete stack, no peer gaps_";
@@ -46,6 +60,16 @@ function buildSubmissionMessage(r: any) {
   const phoneDisplay = r.phone_number
     ? `<tel:${String(r.phone_number).replace(/\s+/g, "")}|${r.phone_number}>`
     : "—";
+  const nps = summarizeNps(r.product_nps);
+  const npsBlocks: any[] = [
+    { type: "section", text: { type: "mrkdwn", text: `*Product NPS*\n${nps.line}` } },
+  ];
+  if (nps.detractors.length) {
+    npsBlocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*⚠ Detractors (≤6)*\n${nps.detractors.join(", ")}` },
+    });
+  }
   return {
     text: `New Stack Review submission from ${fullName} at ${r.company ?? "an unnamed venue"}`,
     blocks: [
@@ -70,6 +94,7 @@ function buildSubmissionMessage(r: any) {
         ],
       },
       { type: "section", text: { type: "mrkdwn", text: `*Top gap categories*\n${gapText}` } },
+      ...npsBlocks,
       {
         type: "context",
         elements: [{ type: "mrkdwn", text: `Marketing consent: ${r.consent ? "✓ opted-in" : "✗ not opted-in"}  ·  submitted ${r.created_at ?? "just now"}` }],
@@ -205,25 +230,59 @@ async function syncToStackcollect(r: any) {
     if (!bizRow?.id) return;
 
     const stack = r.stack ?? {};
-    const entries: Array<{ submission_id: string; category: string; tool_name: string }> = [];
+    const entries: Array<{ submission_id: string; category: string; tool_name: string; nps: number | null }> = [];
     for (const [catId, sRaw] of Object.entries<any>(stack)) {
       const s = sRaw || {};
       const catLabel = CATEGORY_LABEL[catId] ?? catId;
+      const catNps = (s.nps && typeof s.nps === "object") ? s.nps : {};
       for (const t of (s.tools ?? [])) {
-        if (t) entries.push({ submission_id: bizRow.id, category: catLabel, tool_name: String(t) });
+        if (!t) continue;
+        const score = catNps[t];
+        entries.push({
+          submission_id: bizRow.id,
+          category: catLabel,
+          tool_name: String(t),
+          nps: typeof score === "number" ? score : null,
+        });
       }
       const other = (s.other ?? "").toString().trim();
-      if (other) entries.push({ submission_id: bizRow.id, category: catLabel, tool_name: other });
+      if (other) {
+        const score = catNps[`__other__:${other}`];
+        entries.push({
+          submission_id: bizRow.id,
+          category: catLabel,
+          tool_name: other,
+          nps: typeof score === "number" ? score : null,
+        });
+      }
     }
 
     if (entries.length > 0) {
-      const entriesRes = await fetch(`${STACKCOLLECT_SUPABASE_URL}/rest/v1/tech_stack_entries`, {
+      const url = `${STACKCOLLECT_SUPABASE_URL}/rest/v1/tech_stack_entries`;
+      let entriesRes = await fetch(url, {
         method: "POST",
         headers: { ...headers, Prefer: "return=minimal" },
         body: JSON.stringify(entries),
       });
+      // If the portal hasn't added the `nps` column yet, retry without it so
+      // stack data still lands. Post-deploy, add the column on the portal side
+      // (alter table tech_stack_entries add column nps integer) to capture NPS.
       if (!entriesRes.ok) {
-        console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, await entriesRes.text().catch(() => ""));
+        const errText = await entriesRes.text().catch(() => "");
+        if (/nps/i.test(errText) || entriesRes.status === 400) {
+          console.warn("[stackcollect] retrying tech_stack_entries without nps column:", errText);
+          const legacyEntries = entries.map(({ nps: _nps, ...rest }) => rest);
+          entriesRes = await fetch(url, {
+            method: "POST",
+            headers: { ...headers, Prefer: "return=minimal" },
+            body: JSON.stringify(legacyEntries),
+          });
+          if (!entriesRes.ok) {
+            console.error("[stackcollect] tech_stack_entries retry failed", entriesRes.status, await entriesRes.text().catch(() => ""));
+          }
+        } else {
+          console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, errText);
+        }
       }
     }
   } catch (e) {

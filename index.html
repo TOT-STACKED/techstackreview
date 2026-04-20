@@ -341,10 +341,32 @@ function VenueStep({ value, onChange, onNext }) {
   );
 }
 
-function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext, onBack, canBack }) {
+function NpsRow({ score, onRate }) {
+  return h("div", { onClick: e => e.stopPropagation() },
+    h("div", { className: "text-[10px] text-muted mb-1 uppercase tracking-wider" },
+      typeof score === "number" ? `NPS: ${score}` : "Rate 0–10 (recommend?)"
+    ),
+    h("div", { className: "flex items-center gap-0.5" },
+      Array.from({ length: 11 }, (_, n) => {
+        const active = score === n;
+        const tone = n <= 6 ? "bg-red-600" : n <= 8 ? "bg-amber-500" : "bg-green-600";
+        return h("button", {
+          key: n,
+          type: "button",
+          onClick: e => { e.stopPropagation(); onRate(n); },
+          className: `flex-1 min-w-0 text-[11px] leading-none py-1.5 rounded ${active ? `${tone} text-white font-semibold` : "bg-brandShade text-muted hover:bg-brand/30"}`,
+          "aria-label": `Rate ${n}`,
+        }, n);
+      })
+    )
+  );
+}
+
+function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRateTool, onNext, onBack, canBack }) {
   const selected = value.tools || [];
   const none = value.none === true;
   const other = value.other || "";
+  const nps = value.nps || {};
   return h("div", { className: "fade-in" },
     h("div", { className: "flex items-center gap-2 text-xs font-semibold text-toast uppercase tracking-wider mb-2" },
       h("span", null, category.icon),
@@ -358,15 +380,19 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext
     h("div", { className: "grid grid-cols-2 md:grid-cols-3 gap-3 mb-4" },
       category.options.map(opt => {
         const isSel = !none && selected.includes(opt);
-        return h(Card, {
-          key: opt,
-          selected: isSel,
-          onClick: () => onToggle(opt),
-          compact: true,
-        },
-          h("div", { className: "flex items-center justify-between gap-2" },
-            h("span", { className: "font-medium text-sm" }, opt),
-            isSel && h("span", { className: "text-toast" }, "✓")
+        return h("div", { key: opt, className: "flex flex-col gap-2" },
+          h(Card, {
+            selected: isSel,
+            onClick: () => onToggle(opt),
+            compact: true,
+          },
+            h("div", { className: "flex items-center justify-between gap-2" },
+              h("span", { className: "font-medium text-sm" }, opt),
+              isSel && h("span", { className: "text-toast" }, "✓")
+            )
+          ),
+          isSel && h("div", { className: "px-1" },
+            h(NpsRow, { score: nps[opt], onRate: n => onRateTool(opt, n) })
           )
         );
       })
@@ -385,7 +411,11 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onNext
       }),
       h("p", { className: "text-xs text-muted mt-1" },
         "Separate multiple with a comma. We'll flag unlisted vendors for the Tech on Toast team to review."
-      )
+      ),
+      other.trim() && h(NpsRow, {
+        score: nps[`__other__:${other.trim()}`],
+        onRate: n => onRateTool(`__other__:${other.trim()}`, n),
+      })
     ),
 
     h("button", {
@@ -1036,33 +1066,50 @@ function App() {
     ? CATEGORIES[step - FIRST_CAT_STEP] : null;
 
   function ensureCat(catId) {
-    setStack(prev => prev[catId] ? prev : { ...prev, [catId]: { tools: [], other: "", none: false } });
+    setStack(prev => prev[catId] ? prev : { ...prev, [catId]: { tools: [], other: "", none: false, nps: {} } });
   }
   function toggleTool(catId, tool) {
     setStack(prev => {
-      const cur = prev[catId] || { tools: [], other: "", none: false };
+      const cur = prev[catId] || { tools: [], other: "", none: false, nps: {} };
       const exists = cur.tools.includes(tool);
+      const nextNps = { ...(cur.nps || {}) };
+      if (exists) delete nextNps[tool];
       return {
         ...prev,
         [catId]: {
           ...cur,
           none: false,
           tools: exists ? cur.tools.filter(t => t !== tool) : [...cur.tools, tool],
+          nps: nextNps,
         },
       };
     });
   }
   function toggleNone(catId) {
     setStack(prev => {
-      const cur = prev[catId] || { tools: [], other: "", none: false };
+      const cur = prev[catId] || { tools: [], other: "", none: false, nps: {} };
       const turningOn = !cur.none;
-      return { ...prev, [catId]: { tools: turningOn ? [] : cur.tools, other: turningOn ? "" : cur.other, none: turningOn } };
+      return { ...prev, [catId]: { tools: turningOn ? [] : cur.tools, other: turningOn ? "" : cur.other, none: turningOn, nps: turningOn ? {} : (cur.nps || {}) } };
     });
   }
   function setOther(catId, text) {
     setStack(prev => {
-      const cur = prev[catId] || { tools: [], other: "", none: false };
-      return { ...prev, [catId]: { ...cur, other: text, none: text ? false : cur.none } };
+      const cur = prev[catId] || { tools: [], other: "", none: false, nps: {} };
+      // Clear any stale __other__ nps keys when the text changes
+      const nextNps = Object.fromEntries(
+        Object.entries(cur.nps || {}).filter(([k]) => !k.startsWith("__other__:"))
+      );
+      const trimmed = text.trim();
+      const preserved = trimmed && cur.nps && cur.nps[`__other__:${trimmed}`] != null
+        ? { [`__other__:${trimmed}`]: cur.nps[`__other__:${trimmed}`] }
+        : {};
+      return { ...prev, [catId]: { ...cur, other: text, none: text ? false : cur.none, nps: { ...nextNps, ...preserved } } };
+    });
+  }
+  function rateTool(catId, toolKey, score) {
+    setStack(prev => {
+      const cur = prev[catId] || { tools: [], other: "", none: false, nps: {} };
+      return { ...prev, [catId]: { ...cur, nps: { ...(cur.nps || {}), [toolKey]: score } } };
     });
   }
 
@@ -1086,10 +1133,27 @@ function App() {
     // Honeypot: if filled by a bot, silently advance without sending.
     if (lead.hp) { setStep(REPORT_STEP); return; }
     const r = buildReport({ venue, stack });
+    // Flatten per-category NPS into a single { tool_name: score } map for dashboards.
+    // Keys prefixed with "__other__:" are stripped of the marker so the vendor name
+    // lands in the portal as-is.
+    const productNps = {};
+    for (const cat of Object.values(stack)) {
+      for (const [key, score] of Object.entries((cat && cat.nps) || {})) {
+        if (typeof score !== "number") continue;
+        const name = key.startsWith("__other__:") ? key.slice("__other__:".length) : key;
+        if (name) productNps[name] = score;
+      }
+    }
+    const npsScores = Object.values(productNps);
+    const npsAvg = npsScores.length
+      ? Math.round(npsScores.reduce((a, b) => a + b, 0) / npsScores.length)
+      : null;
     const payload = {
       venue_type: venue.type,
       sites: venue.sites,
       stack,
+      product_nps: productNps,
+      nps_avg: npsAvg,
       first_name: lead.firstName,
       last_name: lead.lastName,
       email: lead.email,
@@ -1207,10 +1271,11 @@ function App() {
 
       currentCategory && h(CategoryStep, {
         category: currentCategory,
-        value: stack[currentCategory.id] || { tools: [], other: "", none: false },
+        value: stack[currentCategory.id] || { tools: [], other: "", none: false, nps: {} },
         onToggle: (t) => toggleTool(currentCategory.id, t),
         onNone: () => toggleNone(currentCategory.id),
         onOtherChange: (t) => setOther(currentCategory.id, t),
+        onRateTool: (toolKey, score) => rateTool(currentCategory.id, toolKey, score),
         onNext: () => setStep(step + 1),
         onBack: () => setStep(step - 1),
         canBack: step > FIRST_CAT_STEP,
