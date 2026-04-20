@@ -259,30 +259,42 @@ async function syncToStackcollect(r: any) {
 
     if (entries.length > 0) {
       const url = `${STACKCOLLECT_SUPABASE_URL}/rest/v1/tech_stack_entries`;
-      let entriesRes = await fetch(url, {
+      // Legacy writes always go without the `nps` column — the portal's
+      // tech_stack_entries table is the system of record for tools, not NPS.
+      // NPS lands in the dedicated nps_scores table below.
+      const legacyEntries = entries.map(({ nps: _nps, ...rest }) => rest);
+      const entriesRes = await fetch(url, {
         method: "POST",
         headers: { ...headers, Prefer: "return=minimal" },
-        body: JSON.stringify(entries),
+        body: JSON.stringify(legacyEntries),
       });
-      // If the portal hasn't added the `nps` column yet, retry without it so
-      // stack data still lands. Post-deploy, add the column on the portal side
-      // (alter table tech_stack_entries add column nps integer) to capture NPS.
       if (!entriesRes.ok) {
-        const errText = await entriesRes.text().catch(() => "");
-        if (/nps/i.test(errText) || entriesRes.status === 400) {
-          console.warn("[stackcollect] retrying tech_stack_entries without nps column:", errText);
-          const legacyEntries = entries.map(({ nps: _nps, ...rest }) => rest);
-          entriesRes = await fetch(url, {
-            method: "POST",
-            headers: { ...headers, Prefer: "return=minimal" },
-            body: JSON.stringify(legacyEntries),
-          });
-          if (!entriesRes.ok) {
-            console.error("[stackcollect] tech_stack_entries retry failed", entriesRes.status, await entriesRes.text().catch(() => ""));
-          }
-        } else {
-          console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, errText);
-        }
+        console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, await entriesRes.text().catch(() => ""));
+      }
+    }
+
+    // Fan-out per-product NPS into the portal's unified nps_scores table.
+    const npsRows = entries
+      .filter(e => typeof e.nps === "number")
+      .map(e => ({
+        source:           "techstackreview",
+        touchpoint:       "product-selection",
+        score:            e.nps,
+        vendor:           e.tool_name,
+        category:         e.category,
+        respondent_name:  contactName,
+        respondent_email: r.email ?? null,
+        company:          r.company ?? null,
+        external_id:      bizRow.id,
+      }));
+    if (npsRows.length > 0) {
+      const npsRes = await fetch(`${STACKCOLLECT_SUPABASE_URL}/rest/v1/nps_scores`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=minimal" },
+        body: JSON.stringify(npsRows),
+      });
+      if (!npsRes.ok) {
+        console.error("[stackcollect] nps_scores insert failed", npsRes.status, await npsRes.text().catch(() => ""));
       }
     }
   } catch (e) {
