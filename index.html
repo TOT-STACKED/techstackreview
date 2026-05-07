@@ -70,7 +70,7 @@ async function postSubmission(payload) {
       "apikey": SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       "Content-Type": "application/json",
-      "Prefer": "return=minimal",
+      "Prefer": "return=representation",
     },
     body: JSON.stringify(payload),
   });
@@ -78,7 +78,28 @@ async function postSubmission(payload) {
     const text = await res.text().catch(() => "");
     throw new Error(`Supabase ${res.status}: ${text || res.statusText}`);
   }
-  return true;
+  const rows = await res.json().catch(() => []);
+  return Array.isArray(rows) && rows[0] && rows[0].id ? rows[0].id : null;
+}
+
+// Calls the stack-review edge function which generates a Claude-written
+// narrative review using the Tech on Toast guardrails. Best-effort — the
+// numeric report renders regardless of whether this succeeds.
+async function postStackReview(submissionId) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/stack-review`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ submission_id: submissionId }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`stack-review ${res.status}: ${text || res.statusText}`);
+  }
+  const data = await res.json().catch(() => ({}));
+  return typeof data.review === "string" ? data.review : "";
 }
 
 // ---------- CATEGORY CATALOGUE ----------
@@ -434,12 +455,12 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
 }
 
 function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
-  const { firstName, lastName, email, phone, company, consent, hp } = value;
+  const { firstName, lastName, email, phone, company, location, consent, hp } = value;
   const emailOk = /.+@.+\..+/.test(email || "");
   // Allow +, digits, spaces, hyphens, parens; require at least 7 digits
   const phoneOk = (phone || "").replace(/\D/g, "").length >= 7;
   const submitting = submitState && submitState.status === "submitting";
-  const canSubmit = firstName && lastName && emailOk && phoneOk && company && consent && !submitting;
+  const canSubmit = firstName && lastName && emailOk && phoneOk && company && location && consent && !submitting;
   return h("div", { className: "fade-in max-w-xl mx-auto" },
     h("div", { className: "rounded-2xl bg-canvas border border-line p-8" },
       h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "One more step"),
@@ -498,6 +519,13 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
           placeholder: "Venue / company name",
           value: company || "",
           onChange: e => onChange({ ...value, company: e.target.value }),
+        }),
+        h("input", {
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
+          placeholder: "Location (town or city)",
+          autoComplete: "address-level2",
+          value: location || "",
+          onChange: e => onChange({ ...value, location: e.target.value }),
         }),
         h("label", { className: "flex items-start gap-2 text-sm text-muted pt-1" },
           h("input", {
@@ -665,7 +693,54 @@ function ScoreRing({ score }) {
   );
 }
 
-function Report({ venue, stack, lead, onReset, onStartDeep }) {
+// Tiny markdown renderer for the AI-written review. Handles **bold**, h2/h3
+// headings, and dash/numbered bullets — the subset our prompt asks the model
+// to produce. Anything more exotic falls through as a paragraph.
+function renderInlineMd(text) {
+  const out = [];
+  const re = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let m;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(h("strong", { key: key++, className: "text-brand" }, m[1]));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function renderMarkdown(text) {
+  if (!text) return null;
+  const blocks = text.trim().split(/\n{2,}/);
+  return blocks.map((block, i) => {
+    const lines = block.split("\n");
+    const first = lines[0] || "";
+    if (first.startsWith("### ")) {
+      return h("h4", { key: i, className: "font-display text-base font-bold mt-4 mb-2" }, renderInlineMd(first.slice(4)));
+    }
+    if (first.startsWith("## ")) {
+      return h("h3", { key: i, className: "font-display text-lg font-bold mt-5 mb-2 text-brand" }, renderInlineMd(first.slice(3)));
+    }
+    if (first.startsWith("# ")) {
+      return h("h2", { key: i, className: "font-display text-xl font-bold mt-5 mb-3 text-brand" }, renderInlineMd(first.slice(2)));
+    }
+    if (lines.every(l => /^\s*[-*]\s+/.test(l))) {
+      return h("ul", { key: i, className: "list-disc list-outside ml-5 space-y-1.5 mb-3 text-cream/90" },
+        lines.map((l, j) => h("li", { key: j }, renderInlineMd(l.replace(/^\s*[-*]\s+/, ""))))
+      );
+    }
+    if (lines.every(l => /^\s*\d+\.\s+/.test(l))) {
+      return h("ol", { key: i, className: "list-decimal list-outside ml-5 space-y-1.5 mb-3 text-cream/90" },
+        lines.map((l, j) => h("li", { key: j }, renderInlineMd(l.replace(/^\s*\d+\.\s+/, ""))))
+      );
+    }
+    return h("p", { key: i, className: "mb-3 text-cream/90 leading-relaxed" }, renderInlineMd(block));
+  });
+}
+
+function Report({ venue, stack, lead, aiReview, onReset, onStartDeep }) {
   const { segment, bench, coverage, gaps, switches, matchScore, totalGbp, totalHrs, gapGbp, switchGbp } =
     useMemo(() => buildReport({ venue, stack }), [venue, stack]);
 
@@ -882,6 +957,33 @@ function Report({ venue, stack, lead, onReset, onStartDeep }) {
           )
         );
       })
+    ),
+
+    // AI-written review — generated asynchronously after the form submits.
+    // Lives inside #report-content so it's captured in the downloaded PDF too.
+    h("div", { className: "rounded-3xl bg-canvas border border-brand/40 p-6 md:p-8 mb-6" },
+      h("div", { className: "flex items-center gap-2 mb-3" },
+        h("div", { className: "text-2xl" }, "🍞"),
+        h("div", null,
+          h("div", { className: "text-xs uppercase tracking-wider text-brand font-semibold" }, "Tech on Toast review"),
+          h("div", { className: "font-display text-lg font-bold" },
+            lead.firstName ? `${lead.firstName}, here's what I'd actually do.` : "Here's what I'd actually do."
+          )
+        )
+      ),
+      aiReview.status === "loading" && h("div", { className: "py-6 flex items-center gap-3 text-muted" },
+        h("div", { className: "w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" }),
+        h("div", { className: "text-sm" }, "Reviewing your stack against the Tech on Toast playbook… this takes ~20 seconds.")
+      ),
+      aiReview.status === "error" && h("div", { className: "text-sm text-cream/70 py-2" },
+        "Couldn't generate the written review just now. The numbers above and the breakdown below are still all yours."
+      ),
+      aiReview.status === "done" && h("div", { className: "prose-sm" },
+        renderMarkdown(aiReview.text)
+      ),
+      aiReview.status === "done" && h("div", { className: "text-xs text-muted mt-4 pt-3 border-t border-line" },
+        "Written by Claude using the Tech on Toast review framework. Directional, not a vendor endorsement."
+      )
     ),
 
     ), // end of #report-content
@@ -1103,7 +1205,7 @@ function App() {
   const [step, setStep] = useState(0);
   const [venue, setVenue] = useState({ type: "", sites: "" });
   const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
-  const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", consent: false, hp: "" });
+  const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
 
   // Stage 2 state: null (not started) | 0..5 (question index) | "submitting" | "thanks"
   const [deepStep, setDeepStep] = useState(null);
@@ -1190,6 +1292,9 @@ function App() {
   }, [step, venue, stack]);
 
   const [submitState, setSubmitState] = useState({ status: "idle", error: "" });
+  // AI-written review state. Loaded asynchronously after the row is inserted.
+  // status: idle | loading | done | error.
+  const [aiReview, setAiReview] = useState({ status: "idle", text: "", error: "" });
 
   async function submitLead() {
     // Honeypot: if filled by a bot, silently advance without sending.
@@ -1221,6 +1326,7 @@ function App() {
       email: lead.email,
       phone_number: lead.phone,
       company: lead.company,
+      location: lead.location,
       consent: !!lead.consent,
       score: r.matchScore,
       coverage_pct: r.coverage,
@@ -1231,9 +1337,10 @@ function App() {
       segment: r.segment,
     };
     setSubmitState({ status: "submitting", error: "" });
+    let submissionId = null;
     try {
       if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith("REPLACE_")) {
-        await postSubmission(payload);
+        submissionId = await postSubmission(payload);
       } else {
         console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set, skipping network submission");
       }
@@ -1241,12 +1348,28 @@ function App() {
       setStep(REPORT_STEP);
     } catch (err) {
       setSubmitState({ status: "error", error: err.message || "Submission failed" });
+      return;
+    }
+    // Kick off the AI-written review in the background. The numeric report is
+    // already visible — this fills in the narrative section when ready.
+    if (submissionId) {
+      setAiReview({ status: "loading", text: "", error: "" });
+      postStackReview(submissionId)
+        .then(text => {
+          if (text) setAiReview({ status: "done", text, error: "" });
+          else setAiReview({ status: "error", text: "", error: "empty review" });
+        })
+        .catch(err => {
+          console.error("[stack-review] fetch failed", err);
+          setAiReview({ status: "error", text: "", error: err.message || "review failed" });
+        });
     }
   }
   function reset() {
     setStep(0); setVenue({ type: "", sites: "" }); setStack({});
-    setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", consent: false, hp: "" });
+    setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
     setSubmitState({ status: "idle", error: "" });
+    setAiReview({ status: "idle", text: "", error: "" });
     setDeepStep(null);
     setDeepAnswers({ pain_category: "", renewal_window: "", tech_spend_band: "", decision_maker: "", growth_goal: "", growth_goal_other: "", open_to_intro: "" });
     setDeepSubmit({ status: "idle", error: "" });
@@ -1260,6 +1383,7 @@ function App() {
       email: lead.email,
       phone_number: lead.phone,
       company: lead.company,
+      location: lead.location,
       score: r.matchScore,
       total_gbp_per_year: r.totalGbp,
       pain_category: deepAnswers.pain_category || null,
@@ -1352,7 +1476,7 @@ function App() {
         submitState: submitState,
       }),
 
-      step === REPORT_STEP && deepStep === null && h(Report, { venue, stack, lead, onReset: reset, onStartDeep: () => setDeepStep(0) }),
+      step === REPORT_STEP && deepStep === null && h(Report, { venue, stack, lead, aiReview, onReset: reset, onStartDeep: () => setDeepStep(0) }),
 
       step === REPORT_STEP && typeof deepStep === "number" && (() => {
         const q = DEEP_QUESTIONS[deepStep];

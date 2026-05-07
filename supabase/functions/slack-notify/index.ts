@@ -204,7 +204,7 @@ async function syncToStackcollect(r: any) {
     business_name:        r.company ?? null,
     industry:             "Hospitality",
     size:                 SIZE_LABEL[r.sites] ?? r.sites ?? null,
-    location:             null,
+    location:             r.location ?? null,
     contact_name:         contactName,
     contact_email:        r.email ?? null,
     role:                 null,
@@ -338,6 +338,7 @@ serve(async (req) => {
 
   if (!slackRes.ok) {
     const errText = await slackRes.text().catch(() => "");
+    console.error(`[slack-notify] Slack returned ${slackRes.status}: ${errText}`);
     return new Response(`Slack responded ${slackRes.status}: ${errText}`, { status: 502 });
   }
   return new Response(JSON.stringify({ ok: true }), {
