@@ -715,7 +715,12 @@ function renderInlineMd(text) {
 
 function renderMarkdown(text) {
   if (!text) return null;
-  const blocks = text.trim().split(/\n{2,}/);
+  // Normalize: ensure every heading line is followed by a blank line so it
+  // becomes its own block instead of absorbing the content below it. Without
+  // this, "## Heading\nContent" renders as just the heading and silently
+  // drops Content.
+  const normalized = text.trim().replace(/^(#{1,6} .+)\n(?!\n|$)/gm, "$1\n\n");
+  const blocks = normalized.split(/\n{2,}/);
   return blocks.map((block, i) => {
     const lines = block.split("\n");
     const first = lines[0] || "";
