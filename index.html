@@ -64,13 +64,16 @@ const SUPABASE_URL = "https://kohnakdevwfudzgfjmab.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvaG5ha2RldndmdWR6Z2ZqbWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MTQwMDYsImV4cCI6MjA5MTk5MDAwNn0.1_SzL7KcimLJrumUzQxpoYZS8GiOKASzJkKHBC1iqr0";
 
 async function postSubmission(payload) {
+  // RLS policy on `submissions` allows anon INSERT only — no SELECT, so we
+  // can't ask Supabase to return the row. Caller generates the UUID
+  // client-side and includes it in the payload, so we already know the id.
   const res = await fetch(`${SUPABASE_URL}/rest/v1/submissions`, {
     method: "POST",
     headers: {
       "apikey": SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       "Content-Type": "application/json",
-      "Prefer": "return=representation",
+      "Prefer": "return=minimal",
     },
     body: JSON.stringify(payload),
   });
@@ -78,8 +81,7 @@ async function postSubmission(payload) {
     const text = await res.text().catch(() => "");
     throw new Error(`Supabase ${res.status}: ${text || res.statusText}`);
   }
-  const rows = await res.json().catch(() => []);
-  return Array.isArray(rows) && rows[0] && rows[0].id ? rows[0].id : null;
+  return true;
 }
 
 // Calls the stack-review edge function which generates a Claude-written
@@ -1315,7 +1317,18 @@ function App() {
     const npsAvg = npsScores.length
       ? Math.round(npsScores.reduce((a, b) => a + b, 0) / npsScores.length)
       : null;
+    // Generate a client-side UUID so we know the submission id without
+    // having to read it back (RLS blocks anon SELECT on submissions). Falls
+    // back to a v4-shaped string on browsers that don't expose
+    // crypto.randomUUID (≈ <94% but defensive).
+    const submissionId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0;
+          return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+        });
     const payload = {
+      id: submissionId,
       venue_type: venue.type,
       sites: venue.sites,
       stack,
@@ -1337,10 +1350,11 @@ function App() {
       segment: r.segment,
     };
     setSubmitState({ status: "submitting", error: "" });
-    let submissionId = null;
+    let submissionInserted = false;
     try {
       if (SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith("REPLACE_")) {
-        submissionId = await postSubmission(payload);
+        await postSubmission(payload);
+        submissionInserted = true;
       } else {
         console.warn("[tech-stack-benchmark] SUPABASE_ANON_KEY not set, skipping network submission");
       }
@@ -1352,7 +1366,7 @@ function App() {
     }
     // Kick off the AI-written review in the background. The numeric report is
     // already visible — this fills in the narrative section when ready.
-    if (submissionId) {
+    if (submissionInserted) {
       setAiReview({ status: "loading", text: "", error: "" });
       postStackReview(submissionId)
         .then(text => {
