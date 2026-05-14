@@ -123,6 +123,11 @@ function buildUserMessage(row: any): string {
   if (typeof row.nps_avg === "number") {
     lines.push(`- Average product NPS across their stack: ${row.nps_avg}/10`);
   }
+  if (typeof row.uses_whatsapp === "boolean") {
+    lines.push(
+      `- Uses WhatsApp for team communications: ${row.uses_whatsapp ? "yes" : "no"}`,
+    );
+  }
   lines.push("");
 
   lines.push("# Your task");

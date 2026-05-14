@@ -1170,6 +1170,42 @@ function DeepQuestion({ q, answer, onAnswer, onOtherChange, otherValue, onNext, 
   );
 }
 
+// One-question step asked between the 6 category steps and the gate. Captures
+// whether the operator uses WhatsApp for team comms — a useful signal because
+// it's a proxy for "no team comms platform" and a common first-time tech buy
+// at multi-site scale.
+function CommsStep({ value, onChange, onNext, onBack }) {
+  const canNext = value === true || value === false;
+  return h("div", { className: "fade-in max-w-2xl mx-auto" },
+    h("div", { className: "rounded-2xl bg-canvas border border-line p-8 md:p-10" },
+      h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-3" }, "One quick question"),
+      h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" },
+        "Do you use WhatsApp for team communications?"
+      ),
+      h("p", { className: "text-muted mb-6 text-sm" },
+        "Group chats with managers, rota updates, that kind of thing."
+      ),
+      h("div", { className: "grid grid-cols-2 gap-3" },
+        [
+          { v: true, label: "Yes", icon: "👍" },
+          { v: false, label: "No", icon: "👎" },
+        ].map(o => h("button", {
+          key: String(o.v),
+          onClick: () => onChange(o.v),
+          className: `px-4 py-5 rounded-xl border text-left transition flex items-center gap-3
+            ${value === o.v
+              ? "border-brand bg-brand text-ink font-semibold"
+              : "border-line bg-brandShade hover:border-brand text-cream"}`,
+        }, h("span", { className: "text-2xl" }, o.icon), h("span", { className: "font-medium" }, o.label)))
+      )
+    ),
+    h("div", { className: "mt-6 flex items-center justify-between" },
+      h(GhostBtn, { onClick: onBack }, "← Back"),
+      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
+    )
+  );
+}
+
 function DeepThanks({ onReset, lead }) {
   return h("div", { className: "fade-in max-w-xl mx-auto text-center py-10" },
     h("div", { className: "text-6xl mb-4" }, "🍞"),
@@ -1212,6 +1248,7 @@ function App() {
   const [step, setStep] = useState(0);
   const [venue, setVenue] = useState({ type: "", sites: "" });
   const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
+  const [usesWhatsapp, setUsesWhatsapp] = useState(null); // true | false | null (unanswered)
   const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
 
   // Stage 2 state: null (not started) | 0..5 (question index) | "submitting" | "thanks"
@@ -1223,13 +1260,16 @@ function App() {
   const VENUE_STEP = 1;
   const FIRST_CAT_STEP = 2;
   const LAST_CAT_STEP = FIRST_CAT_STEP + totalCategorySteps - 1;
-  const GATE_STEP = LAST_CAT_STEP + 1;
+  const COMMS_STEP = LAST_CAT_STEP + 1;
+  const GATE_STEP = COMMS_STEP + 1;
   const REPORT_STEP = GATE_STEP + 1;
 
-  const progressTotal = 1 + totalCategorySteps + 1;
+  // venue + 6 categories + comms + gate
+  const progressTotal = 1 + totalCategorySteps + 1 + 1;
   const progressStep = step === 0 ? 0
     : step === VENUE_STEP ? 1
     : step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP ? 1 + (step - FIRST_CAT_STEP + 1)
+    : step === COMMS_STEP ? 1 + totalCategorySteps + 1
     : step === GATE_STEP ? progressTotal
     : progressTotal;
 
@@ -1346,6 +1386,7 @@ function App() {
       company: lead.company,
       location: lead.location,
       consent: !!lead.consent,
+      uses_whatsapp: usesWhatsapp,
       score: r.matchScore,
       coverage_pct: r.coverage,
       total_gbp_per_year: r.totalGbp,
@@ -1386,6 +1427,7 @@ function App() {
   }
   function reset() {
     setStep(0); setVenue({ type: "", sites: "" }); setStack({});
+    setUsesWhatsapp(null);
     setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
     setSubmitState({ status: "idle", error: "" });
     setAiReview({ status: "idle", text: "", error: "" });
@@ -1484,6 +1526,13 @@ function App() {
         onNext: () => setStep(step + 1),
         onBack: () => setStep(step - 1),
         canBack: step > FIRST_CAT_STEP,
+      }),
+
+      step === COMMS_STEP && h(CommsStep, {
+        value: usesWhatsapp,
+        onChange: setUsesWhatsapp,
+        onNext: () => setStep(step + 1),
+        onBack: () => setStep(step - 1),
       }),
 
       step === GATE_STEP && h(GateStep, {
