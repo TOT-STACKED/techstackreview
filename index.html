@@ -151,6 +151,18 @@ const CATEGORIES = [
   },
 ];
 
+// Finance / Ops management — captured as a category-style question (tools +
+// NPS) but DELIBERATELY kept out of CATEGORIES so it does not change the
+// score, coverage %, or £ upside model (those iterate CATEGORIES only). The
+// data still lands in stack.finance_ops and flows to Slack + the AI review.
+const FINANCE_OPS = {
+  id: "finance_ops",
+  label: "Finance / Ops management",
+  hint: "Accounting, P&L, back-office reporting and ops analytics",
+  icon: "📊",
+  options: ["Sage", "Xero", "QuickBooks", "Tenzo", "Tahola", "Nory", "Accurise", "FreeAgent", "Lightyear", "Independent accountant"],
+};
+
 // ---------- ROI MODEL ----------
 // Per-site annual savings & weekly hours saved when an operator adopts a tool in this category.
 // Numbers are directional industry benchmarks for a typical UK site doing ~£800k–£1.2m revenue.
@@ -1260,16 +1272,18 @@ function App() {
   const VENUE_STEP = 1;
   const FIRST_CAT_STEP = 2;
   const LAST_CAT_STEP = FIRST_CAT_STEP + totalCategorySteps - 1;
-  const COMMS_STEP = LAST_CAT_STEP + 1;
+  const FINANCE_STEP = LAST_CAT_STEP + 1;
+  const COMMS_STEP = FINANCE_STEP + 1;
   const GATE_STEP = COMMS_STEP + 1;
   const REPORT_STEP = GATE_STEP + 1;
 
-  // venue + 6 categories + comms + gate
-  const progressTotal = 1 + totalCategorySteps + 1 + 1;
+  // venue + 6 categories + finance/ops + comms + gate
+  const progressTotal = 1 + totalCategorySteps + 1 + 1 + 1;
   const progressStep = step === 0 ? 0
     : step === VENUE_STEP ? 1
     : step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP ? 1 + (step - FIRST_CAT_STEP + 1)
-    : step === COMMS_STEP ? 1 + totalCategorySteps + 1
+    : step === FINANCE_STEP ? 1 + totalCategorySteps + 1
+    : step === COMMS_STEP ? 1 + totalCategorySteps + 2
     : step === GATE_STEP ? progressTotal
     : progressTotal;
 
@@ -1526,6 +1540,18 @@ function App() {
         onNext: () => setStep(step + 1),
         onBack: () => setStep(step - 1),
         canBack: step > FIRST_CAT_STEP,
+      }),
+
+      step === FINANCE_STEP && h(CategoryStep, {
+        category: FINANCE_OPS,
+        value: stack[FINANCE_OPS.id] || { tools: [], other: "", none: false, nps: {} },
+        onToggle: (t) => toggleTool(FINANCE_OPS.id, t),
+        onNone: () => toggleNone(FINANCE_OPS.id),
+        onOtherChange: (t) => setOther(FINANCE_OPS.id, t),
+        onRateTool: (toolKey, score) => rateTool(FINANCE_OPS.id, toolKey, score),
+        onNext: () => setStep(step + 1),
+        onBack: () => setStep(step - 1),
+        canBack: true,
       }),
 
       step === COMMS_STEP && h(CommsStep, {

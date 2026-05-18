@@ -45,6 +45,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   inventory: "Inventory",
   loyalty: "Loyalty / CRM",
   learning: "Learning",
+  finance_ops: "Finance / Ops management",
 };
 
 const VENUE_LABEL: Record<string, string> = {
@@ -82,7 +83,7 @@ function buildUserMessage(row: any): string {
 
   lines.push("# Their reported stack");
   const stack = row.stack ?? {};
-  for (const catId of ["pos", "payments", "workforce", "inventory", "loyalty", "learning"]) {
+  for (const catId of ["pos", "payments", "workforce", "inventory", "loyalty", "learning", "finance_ops"]) {
     const cat = stack[catId] ?? {};
     const label = CATEGORY_LABEL[catId];
     const tools: string[] = Array.isArray(cat.tools) ? cat.tools : [];
