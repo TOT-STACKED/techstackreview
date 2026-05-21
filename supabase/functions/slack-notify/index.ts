@@ -214,6 +214,10 @@ async function syncToStackcollect(r: any) {
     vertical:             VERTICAL_LABEL[r.venue_type] ?? r.venue_type ?? null,
     submission_type:      "external",
     marketing_consent:    !!r.consent,
+    // Forwarded from submissions.uses_whatsapp (techstackreview migration 008).
+    // Lets the portal surface the WhatsApp Yes/No panel without reading the
+    // source submissions table cross-project. Older rows have null.
+    uses_whatsapp:        r.uses_whatsapp ?? null,
   };
 
   try {
