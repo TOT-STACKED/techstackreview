@@ -29,6 +29,13 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
+// The "portal" / canonical operator-database Supabase project. The Stack
+// Review's slack-notify edge function already syncs every new submission
+// there (see syncToStackcollect in slack-notify), and historical data lives
+// there. Persisting the AI review to that project's business_submissions
+// row keeps everything queryable from one place.
+const STACKCOLLECT_SUPABASE_URL = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
+const STACKCOLLECT_SUPABASE_KEY = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
 
 const SYSTEM_PROMPT: string = (promptData as { prompt: string }).prompt;
 
@@ -212,8 +219,15 @@ serve(async (req) => {
   const row = rows[0];
 
   // If we already have a review for this row (e.g. user refreshed), return it
-  // rather than burning another Anthropic call.
+  // rather than burning another Anthropic call. Still attempt the portal
+  // persist in case it didn't happen before (e.g. row reviewed before the
+  // portal-persist code shipped).
   if (row.ai_feedback && typeof row.ai_feedback === "string" && row.ai_feedback.length > 50) {
+    if (STACKCOLLECT_SUPABASE_URL && STACKCOLLECT_SUPABASE_KEY) {
+      persistReviewToPortal(row, row.ai_feedback).catch((e) =>
+        console.error("[stack-review] portal persist (cached path) threw", e)
+      );
+    }
     return new Response(
       JSON.stringify({ review: row.ai_feedback, cached: true }),
       { headers: { ...CORS, "Content-Type": "application/json" } },
@@ -291,6 +305,19 @@ serve(async (req) => {
     console.error("[stack-review] persist threw", e);
   }
 
+  // Persist the same review into the portal/canonical operator database
+  // (`business_submissions.recommendations` on the StackCollect Supabase
+  // project) so historical + AI-augmented data sits in one place. Best-effort
+  // — failures here don't affect the user-visible response. Match the
+  // canonical row by (email, business_name) within the last hour, since the
+  // portal sync inserts almost immediately after the row lands in this
+  // project.
+  if (STACKCOLLECT_SUPABASE_URL && STACKCOLLECT_SUPABASE_KEY) {
+    persistReviewToPortal(row, reviewText).catch((e) =>
+      console.error("[stack-review] portal persist threw", e)
+    );
+  }
+
   // Fire a follow-up Slack message with the AI review. Best-effort and
   // non-blocking — the original numeric ping from slack-notify is unaffected.
   if (SLACK_WEBHOOK_URL) {
@@ -314,6 +341,89 @@ function mdToSlackMrkdwn(md: string): string {
     .replace(/^## (.+)$/gm, ":small_blue_diamond: *$1*")
     .replace(/^# (.+)$/gm, "*$1*")
     .replace(/\*\*([^*]+)\*\*/g, "*$1*");
+}
+
+// Persist the AI review to the portal's business_submissions row that matches
+// this new-project submission. Lookup keys: contact_email + business_name +
+// recent created_at window. We use email-as-primary because business_name has
+// punctuation/whitespace variability; the time window guards against
+// matching an old row from a different submission with the same email.
+async function persistReviewToPortal(row: any, review: string) {
+  const baseUrl = STACKCOLLECT_SUPABASE_URL!;
+  const key = STACKCOLLECT_SUPABASE_KEY!;
+  const portalHeaders = {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+  };
+
+  const email = (row.email ?? "").toString().trim().toLowerCase();
+  if (!email) {
+    console.error("[stack-review] portal persist skipped: no email on row");
+    return;
+  }
+
+  // Search a 6-hour window back from the source row's created_at — gives the
+  // slack-notify portal sync plenty of time to have landed the row.
+  const baseTime = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+  const windowStart = new Date(baseTime - 6 * 60 * 60 * 1000).toISOString();
+
+  // PostgREST's `eq.` filter on a lowercase email works because the column is
+  // text — but the data was inserted with original case, so use `ilike` to
+  // match case-insensitively.
+  const query =
+    `contact_email=ilike.${encodeURIComponent(email)}` +
+    `&created_at=gte.${encodeURIComponent(windowStart)}` +
+    `&select=id,business_name,contact_email,created_at` +
+    `&order=created_at.desc` +
+    `&limit=5`;
+
+  const lookupRes = await fetch(
+    `${baseUrl}/rest/v1/business_submissions?${query}`,
+    { headers: portalHeaders },
+  );
+  if (!lookupRes.ok) {
+    console.error(
+      `[stack-review] portal lookup failed ${lookupRes.status}: ${await lookupRes.text().catch(() => "")}`,
+    );
+    return;
+  }
+  const candidates: any[] = await lookupRes.json().catch(() => []);
+  if (!Array.isArray(candidates) || !candidates.length) {
+    console.error(
+      `[stack-review] portal lookup: no match for email=${email} in 6h window`,
+    );
+    return;
+  }
+
+  // Prefer a candidate whose business_name matches (case-insensitively, after
+  // stripping whitespace). Fall back to the most recent.
+  const companyNorm = (row.company ?? "").toString().toLowerCase().replace(/\s+/g, " ").trim();
+  const match =
+    candidates.find((c) => {
+      const cn = (c.business_name ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+      return cn && cn === companyNorm;
+    }) ?? candidates[0];
+
+  // Write the review as plain text — `recommendations` is jsonb but PostgREST
+  // accepts a JSON-encoded string value and stores it as a JSON string.
+  const patchRes = await fetch(
+    `${baseUrl}/rest/v1/business_submissions?id=eq.${encodeURIComponent(match.id)}`,
+    {
+      method: "PATCH",
+      headers: { ...portalHeaders, Prefer: "return=minimal" },
+      body: JSON.stringify({ recommendations: review }),
+    },
+  );
+  if (!patchRes.ok) {
+    console.error(
+      `[stack-review] portal patch failed ${patchRes.status}: ${await patchRes.text().catch(() => "")}`,
+    );
+    return;
+  }
+  console.log(
+    `[stack-review] portal review persisted business_submission=${match.id} business_name="${match.business_name}"`,
+  );
 }
 
 async function postReviewToSlack(row: any, review: string) {
