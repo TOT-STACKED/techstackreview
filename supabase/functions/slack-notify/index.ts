@@ -23,6 +23,84 @@ const SLACK_WEBHOOK_URL          = Deno.env.get("SLACK_WEBHOOK_URL");
 const WEBHOOK_SECRET             = Deno.env.get("WEBHOOK_SECRET");
 const STACKCOLLECT_SUPABASE_URL  = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
 const STACKCOLLECT_SUPABASE_KEY  = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
+const AIRTABLE_API_KEY           = Deno.env.get("AIRTABLE_API_KEY");
+
+// Master Lead Sheet → "Master View" table. Forward just the contact details
+// of every new submission so the sales pipeline picks up the lead. IDs are
+// stable identifiers (not secrets); only the API key is a secret.
+const AIRTABLE_BASE_ID  = "apphtL2hcdRu2EDPV";
+const AIRTABLE_TABLE_ID = "tblUkL8xKL4ZNUFKV";
+// Field IDs on the Master View table (resolved via the Airtable schema).
+const AIRTABLE_FIELDS = {
+  businessName:  "fldaIprcZqrPGRxen",
+  firstName:     "fld26qV2h9PnWZpKD",
+  lastName:      "fldnMvs9tjp2RHVeY",
+  contactEmail:  "fldRdQUlKtkwn6eHK",
+  contactNumber: "fldmNvuo4hUotbcjY",
+  location:      "fldTwzHji3JbrvHPU",
+  size:          "fldwUdKgqSG6E2JZ1", // singleLineText
+  vertical:      "fldd84s7oTrjUn5Oe", // singleSelect — mapped from venue_type below
+  source:        "fldMgrGbR7iFwSxij", // singleSelect — tag every Stack Review lead "Tech Check"
+  date:          "fldRND3uaiduLQouI", // date
+};
+
+// Map the form's raw venue_type → the Master View "Vertical" dropdown options.
+// `other` (and anything unmapped) is left blank rather than guessed.
+const VERTICAL_TO_AIRTABLE: Record<string, string> = {
+  indie: "Restaurant",
+  group: "Restaurant",
+  bar:   "Bar",
+  qsr:   "QSR",
+  hotel: "Hotel",
+};
+
+// Forward contact details (only) to the Master Lead Sheet in Airtable.
+// Best-effort, non-blocking — Slack + portal sync are unaffected if this fails.
+async function forwardToAirtable(r: any) {
+  if (!AIRTABLE_API_KEY) return;
+  const fields: Record<string, string> = {};
+  if (r.company)      fields[AIRTABLE_FIELDS.businessName]  = String(r.company);
+  if (r.first_name)   fields[AIRTABLE_FIELDS.firstName]     = String(r.first_name);
+  if (r.last_name)    fields[AIRTABLE_FIELDS.lastName]      = String(r.last_name);
+  if (r.email)        fields[AIRTABLE_FIELDS.contactEmail]  = String(r.email);
+  if (r.phone_number) fields[AIRTABLE_FIELDS.contactNumber] = String(r.phone_number);
+  if (r.location)     fields[AIRTABLE_FIELDS.location]      = String(r.location);
+  // Size: human label (e.g. "2–5 sites"); falls back to the raw value.
+  if (r.sites)        fields[AIRTABLE_FIELDS.size]          = SIZE_LABEL[r.sites] ?? String(r.sites);
+  // Vertical: map venue_type to an existing dropdown option; skip if unmapped.
+  const vertical = VERTICAL_TO_AIRTABLE[r.venue_type];
+  if (vertical)       fields[AIRTABLE_FIELDS.vertical]      = vertical;
+  // Date: the submission date (YYYY-MM-DD) for the Master View "Date" column.
+  if (r.created_at)   fields[AIRTABLE_FIELDS.date]          = String(r.created_at).slice(0, 10);
+  // Constant: every Stack Review lead is tagged "Tech Check" as its Source.
+  fields[AIRTABLE_FIELDS.source] = "Tech Check";
+
+  // Nothing useful to write (e.g. honeypot/empty record) — skip.
+  if (!fields[AIRTABLE_FIELDS.contactEmail] && !fields[AIRTABLE_FIELDS.businessName]) return;
+
+  try {
+    const res = await fetch(
+      `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        // typecast lets Airtable resolve the "Tech Check" singleSelect option
+        // by name (it already exists, so no new option is created).
+        body: JSON.stringify({ records: [{ fields }], typecast: true }),
+      },
+    );
+    if (!res.ok) {
+      console.error(`[airtable] forward failed ${res.status}: ${await res.text().catch(() => "")}`);
+    } else {
+      console.error(`[airtable] lead forwarded: ${r.company ?? r.email ?? "?"}`);
+    }
+  } catch (e) {
+    console.error("[airtable] forward threw", e);
+  }
+}
 
 const fmtGBP = (n: number) => {
   if (!n) return "£0";
@@ -333,6 +411,9 @@ serve(async (req) => {
   if (tbl === "submissions") {
     // Deliberately not awaited — Slack should fire regardless of portal sync outcome.
     syncToStackcollect(r).catch((e) => console.error("[stackcollect] unhandled", e));
+    // Forward contact details to the Master Lead Sheet (Airtable). Also
+    // fire-and-forget — Slack must not depend on it.
+    forwardToAirtable(r).catch((e) => console.error("[airtable] unhandled", e));
   }
 
   const slackRes = await fetch(SLACK_WEBHOOK_URL, {
