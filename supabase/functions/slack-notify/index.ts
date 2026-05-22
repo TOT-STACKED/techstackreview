@@ -42,6 +42,7 @@ const AIRTABLE_FIELDS = {
   vertical:      "fldd84s7oTrjUn5Oe", // singleSelect — mapped from venue_type below
   source:        "fldMgrGbR7iFwSxij", // singleSelect — tag every Stack Review lead "Tech Check"
   date:          "fldRND3uaiduLQouI", // date
+  leadStatus:    "fldf4TNAglyB9s2gP", // singleSelect — every new lead enters at "MAL"
 };
 
 // Map the form's raw venue_type → the Master View "Vertical" dropdown options.
@@ -74,6 +75,8 @@ async function forwardToAirtable(r: any) {
   if (r.created_at)   fields[AIRTABLE_FIELDS.date]          = String(r.created_at).slice(0, 10);
   // Constant: every Stack Review lead is tagged "Tech Check" as its Source.
   fields[AIRTABLE_FIELDS.source] = "Tech Check";
+  // Constant: every new lead enters the pipeline at "MAL" (Marketing Accepted Lead).
+  fields[AIRTABLE_FIELDS.leadStatus] = "MAL";
 
   // Nothing useful to write (e.g. honeypot/empty record) — skip.
   if (!fields[AIRTABLE_FIELDS.contactEmail] && !fields[AIRTABLE_FIELDS.businessName]) return;
