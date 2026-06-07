@@ -36,6 +36,11 @@ const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WEBHOOK_URL");
 // row keeps everything queryable from one place.
 const STACKCOLLECT_SUPABASE_URL = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
 const STACKCOLLECT_SUPABASE_KEY = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
+// Email the AI review to the operator on send. From address is on the
+// verified techontoast.community Resend domain.
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const EMAIL_FROM = "Chris at Tech on Toast <chris@techontoast.community>";
+const EMAIL_REPLY_TO = "chris@techontoast.community";
 
 const SYSTEM_PROMPT: string = (promptData as { prompt: string }).prompt;
 
@@ -225,12 +230,17 @@ serve(async (req) => {
 
   // If we already have a review for this row (e.g. user refreshed), return it
   // rather than burning another Anthropic call. Still attempt the portal
-  // persist in case it didn't happen before (e.g. row reviewed before the
-  // portal-persist code shipped).
+  // persist + operator email in case they didn't happen before (e.g. row
+  // reviewed before that code shipped).
   if (row.ai_feedback && typeof row.ai_feedback === "string" && row.ai_feedback.length > 50) {
     if (STACKCOLLECT_SUPABASE_URL && STACKCOLLECT_SUPABASE_KEY) {
       persistReviewToPortal(row, row.ai_feedback).catch((e) =>
         console.error("[stack-review] portal persist (cached path) threw", e)
+      );
+    }
+    if (RESEND_API_KEY) {
+      sendReviewEmail(row, row.ai_feedback).catch((e) =>
+        console.error("[stack-review] email send (cached path) threw", e)
       );
     }
     return new Response(
@@ -323,6 +333,14 @@ serve(async (req) => {
     );
   }
 
+  // Email the review to the operator. The gate form consent line promises
+  // this. Best-effort, non-blocking.
+  if (RESEND_API_KEY) {
+    sendReviewEmail(row, reviewText).catch((e) =>
+      console.error("[stack-review] email send threw", e)
+    );
+  }
+
   // Fire a follow-up Slack message with the AI review. Best-effort and
   // non-blocking — the original numeric ping from slack-notify is unaffected.
   if (SLACK_WEBHOOK_URL) {
@@ -336,6 +354,127 @@ serve(async (req) => {
     { headers: { ...CORS, "Content-Type": "application/json" } },
   );
 });
+
+// Escape a string for safe inclusion in HTML text. We don't trust the
+// review's content as HTML because it comes from an LLM.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Render the same markdown subset the report screen handles: ## h2, ### h3,
+// **bold**, bullets (- or *), numbered lists (1.), and paragraphs. Anything
+// exotic falls through as a paragraph.
+function reviewMarkdownToHtml(md: string): string {
+  const normalized = md.trim().replace(/^(#{1,6} .+)\n(?!\n|$)/gm, "$1\n\n");
+  const renderInline = (text: string) => {
+    return escapeHtml(text).replace(
+      /\*\*([^*]+)\*\*/g,
+      "<strong style=\"color: #82e914;\">$1</strong>",
+    );
+  };
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => {
+      const lines = block.split("\n");
+      const first = lines[0] || "";
+      if (first.startsWith("### ")) {
+        return `<h4 style="font-family: Georgia, serif; font-size: 16px; margin: 18px 0 8px;">${renderInline(first.slice(4))}</h4>`;
+      }
+      if (first.startsWith("## ")) {
+        return `<h3 style="font-family: Georgia, serif; font-size: 18px; color: #82e914; margin: 22px 0 10px;">${renderInline(first.slice(3))}</h3>`;
+      }
+      if (first.startsWith("# ")) {
+        return `<h2 style="font-family: Georgia, serif; font-size: 22px; color: #82e914; margin: 24px 0 12px;">${renderInline(first.slice(2))}</h2>`;
+      }
+      if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
+        const items = lines
+          .map((l) => `<li style="margin-bottom: 6px;">${renderInline(l.replace(/^\s*[-*]\s+/, ""))}</li>`)
+          .join("");
+        return `<ul style="padding-left: 20px; margin: 0 0 14px;">${items}</ul>`;
+      }
+      if (lines.every((l) => /^\s*\d+\.\s+/.test(l))) {
+        const items = lines
+          .map((l) => `<li style="margin-bottom: 6px;">${renderInline(l.replace(/^\s*\d+\.\s+/, ""))}</li>`)
+          .join("");
+        return `<ol style="padding-left: 20px; margin: 0 0 14px;">${items}</ol>`;
+      }
+      return `<p style="margin: 0 0 14px; line-height: 1.55;">${renderInline(block)}</p>`;
+    })
+    .join("\n");
+}
+
+async function sendReviewEmail(row: any, review: string) {
+  const toEmail = (row.email ?? "").toString().trim();
+  if (!toEmail) {
+    console.error("[stack-review] email skipped: no email on row");
+    return;
+  }
+  const firstName = (row.first_name ?? "").toString().trim();
+  const company = (row.company ?? "").toString().trim();
+
+  const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
+  const intro = `Thanks for completing the Stack Review${company ? ` for ${escapeHtml(company)}` : ""}. Here's what came back — it's a diagnostic look at where your stack is strong, where the gaps are, and the strategic questions sitting under it.`;
+
+  const reviewHtml = reviewMarkdownToHtml(review);
+
+  const subject = company
+    ? `Your Stack Review — ${company}`
+    : "Your Stack Review from Tech on Toast";
+
+  const html = `<!doctype html><html><body style="margin:0; padding:0; background:#0d1702;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0d1702; padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#1a2308; border:1px solid #2a3818; border-radius:16px; padding:32px; color:#f5efe0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">
+        <tr><td>
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#82e914; font-weight:600; margin-bottom:6px;">Tech on Toast — Stack Review</div>
+          <h1 style="font-family:Georgia,serif; font-size:24px; color:#f5efe0; margin:0 0 18px;">${escapeHtml(greeting)}</h1>
+          <p style="margin:0 0 18px; line-height:1.55;">${intro}</p>
+          <hr style="border:none; border-top:1px solid #2a3818; margin:24px 0;">
+          ${reviewHtml}
+          <hr style="border:none; border-top:1px solid #2a3818; margin:28px 0;">
+          <p style="margin:0 0 6px;">Reply to this email to book a call — I read everything that comes through here personally.</p>
+          <p style="margin:0; color:#cfc8b6;">— Chris<br>Tech on Toast</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  // Plain-text fallback — strip markdown to readable text for clients that
+  // don't render HTML (rare, but worth doing).
+  const text =
+    `${greeting}\n\n${intro.replace(/<[^>]+>/g, "")}\n\n${review}\n\n` +
+    `Reply to this email to book a call — I read everything personally.\n\n— Chris, Tech on Toast`;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [toEmail],
+      reply_to: EMAIL_REPLY_TO,
+      subject,
+      html,
+      text,
+    }),
+  });
+  if (!res.ok) {
+    console.error(
+      `[stack-review] resend returned ${res.status}: ${await res.text().catch(() => "")}`,
+    );
+    return;
+  }
+  const body = await res.json().catch(() => ({}));
+  console.log(`[stack-review] email sent to ${toEmail} (resend id ${body.id ?? "?"})`);
+}
 
 // Slack mrkdwn doesn't render markdown headings (#, ##) or **bold** the way
 // markdown does. Translate the subset our prompt asks for: ## becomes :small_blue_diamond:
