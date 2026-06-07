@@ -1218,6 +1218,41 @@ function CommsStep({ value, onChange, onNext, onBack }) {
   );
 }
 
+// One-question step asked after the WhatsApp step. Captures whether the
+// operator has a team knowledge base — the natural audience for the free
+// Stacked Chat offering. Same UX pattern as CommsStep.
+function KnowledgeBaseStep({ value, onChange, onNext, onBack }) {
+  const canNext = value === true || value === false;
+  return h("div", { className: "fade-in max-w-2xl mx-auto" },
+    h("div", { className: "rounded-2xl bg-canvas border border-line p-8 md:p-10" },
+      h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-3" }, "Last one"),
+      h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-2" },
+        "Do you have your own knowledge base?"
+      ),
+      h("p", { className: "text-muted mb-6 text-sm" },
+        "Somewhere your team goes for SOPs, training, allergens, supplier info — a wiki, intranet, shared docs, that kind of thing."
+      ),
+      h("div", { className: "grid grid-cols-2 gap-3" },
+        [
+          { v: true, label: "Yes", icon: "📚" },
+          { v: false, label: "No", icon: "🤷" },
+        ].map(o => h("button", {
+          key: String(o.v),
+          onClick: () => onChange(o.v),
+          className: `px-4 py-5 rounded-xl border text-left transition flex items-center gap-3
+            ${value === o.v
+              ? "border-brand bg-brand text-ink font-semibold"
+              : "border-line bg-brandShade hover:border-brand text-cream"}`,
+        }, h("span", { className: "text-2xl" }, o.icon), h("span", { className: "font-medium" }, o.label)))
+      )
+    ),
+    h("div", { className: "mt-6 flex items-center justify-between" },
+      h(GhostBtn, { onClick: onBack }, "← Back"),
+      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
+    )
+  );
+}
+
 function DeepThanks({ onReset, lead }) {
   return h("div", { className: "fade-in max-w-xl mx-auto text-center py-10" },
     h("div", { className: "text-6xl mb-4" }, "🍞"),
@@ -1261,6 +1296,7 @@ function App() {
   const [venue, setVenue] = useState({ type: "", sites: "" });
   const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
   const [usesWhatsapp, setUsesWhatsapp] = useState(null); // true | false | null (unanswered)
+  const [hasKnowledgeBase, setHasKnowledgeBase] = useState(null); // true | false | null
   const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
 
   // Stage 2 state: null (not started) | 0..5 (question index) | "submitting" | "thanks"
@@ -1274,16 +1310,18 @@ function App() {
   const LAST_CAT_STEP = FIRST_CAT_STEP + totalCategorySteps - 1;
   const FINANCE_STEP = LAST_CAT_STEP + 1;
   const COMMS_STEP = FINANCE_STEP + 1;
-  const GATE_STEP = COMMS_STEP + 1;
+  const KB_STEP = COMMS_STEP + 1;
+  const GATE_STEP = KB_STEP + 1;
   const REPORT_STEP = GATE_STEP + 1;
 
-  // venue + 6 categories + finance/ops + comms + gate
-  const progressTotal = 1 + totalCategorySteps + 1 + 1 + 1;
+  // venue + 6 categories + finance/ops + comms + knowledge base + gate
+  const progressTotal = 1 + totalCategorySteps + 1 + 1 + 1 + 1;
   const progressStep = step === 0 ? 0
     : step === VENUE_STEP ? 1
     : step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP ? 1 + (step - FIRST_CAT_STEP + 1)
     : step === FINANCE_STEP ? 1 + totalCategorySteps + 1
     : step === COMMS_STEP ? 1 + totalCategorySteps + 2
+    : step === KB_STEP ? 1 + totalCategorySteps + 3
     : step === GATE_STEP ? progressTotal
     : progressTotal;
 
@@ -1401,6 +1439,7 @@ function App() {
       location: lead.location,
       consent: !!lead.consent,
       uses_whatsapp: usesWhatsapp,
+      has_knowledge_base: hasKnowledgeBase,
       score: r.matchScore,
       coverage_pct: r.coverage,
       total_gbp_per_year: r.totalGbp,
@@ -1445,6 +1484,8 @@ function App() {
     setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
     setSubmitState({ status: "idle", error: "" });
     setAiReview({ status: "idle", text: "", error: "" });
+    setUsesWhatsapp(null);
+    setHasKnowledgeBase(null);
     setDeepStep(null);
     setDeepAnswers({ pain_category: "", renewal_window: "", tech_spend_band: "", decision_maker: "", growth_goal: "", growth_goal_other: "", open_to_intro: "" });
     setDeepSubmit({ status: "idle", error: "" });
@@ -1557,6 +1598,13 @@ function App() {
       step === COMMS_STEP && h(CommsStep, {
         value: usesWhatsapp,
         onChange: setUsesWhatsapp,
+        onNext: () => setStep(step + 1),
+        onBack: () => setStep(step - 1),
+      }),
+
+      step === KB_STEP && h(KnowledgeBaseStep, {
+        value: hasKnowledgeBase,
+        onChange: setHasKnowledgeBase,
         onNext: () => setStep(step + 1),
         onBack: () => setStep(step - 1),
       }),

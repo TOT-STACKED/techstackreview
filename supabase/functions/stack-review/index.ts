@@ -136,6 +136,11 @@ function buildUserMessage(row: any): string {
       `- Uses WhatsApp for team communications: ${row.uses_whatsapp ? "yes" : "no"}`,
     );
   }
+  if (typeof row.has_knowledge_base === "boolean") {
+    lines.push(
+      `- Has a team knowledge base (wiki/intranet/shared docs for SOPs, training, allergens): ${row.has_knowledge_base ? "yes" : "no"}`,
+    );
+  }
   lines.push("");
 
   lines.push("# Your task");

@@ -299,6 +299,10 @@ async function syncToStackcollect(r: any) {
     // Lets the portal surface the WhatsApp Yes/No panel without reading the
     // source submissions table cross-project. Older rows have null.
     uses_whatsapp:        r.uses_whatsapp ?? null,
+    // Forwarded from submissions.has_knowledge_base (techstackreview migration
+    // 009). Identifies operators without a team knowledge base — the natural
+    // audience for the free Stacked Chat offering.
+    has_knowledge_base:   r.has_knowledge_base ?? null,
   };
 
   try {
