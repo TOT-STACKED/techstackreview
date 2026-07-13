@@ -106,10 +106,15 @@ async function postStackReview(submissionId) {
 
 // ---------- CATEGORY CATALOGUE ----------
 // 6 core categories. The strategic tech decisions operators make most.
+// Category `label` values are the canonical backend taxonomy — they land
+// verbatim in tech_stack_entries.category on the approved-reporting portal.
+// Do not rename without confirming the new value against the portal's
+// 25-category taxonomy; anything off-list becomes an orphaned category on
+// the dashboards. `id` is internal only.
 const CATEGORIES = [
   {
     id: "pos",
-    label: "EPOS",
+    label: "Point of Sale",
     hint: "The till system that runs service",
     icon: "🧾",
     options: ["Toast", "Lightspeed", "Zonal", "Tissl", "Tevalis", "Kobas", "Tebi", "Square", "SumUp POS", "SkyTab", "Tabology", "Pointone", "Redcat", "Shopwave", "Vita Mojo"],
@@ -123,42 +128,44 @@ const CATEGORIES = [
   },
   {
     id: "workforce",
-    label: "Workforce",
+    label: "People Management",
     hint: "Rotas, payroll, HR, flex staffing",
     icon: "👥",
     options: ["Bizimply", "Deputy", "Planday", "Fourth", "Harri", "Rotaready", "s4labour", "Sona", "Brigad", "Workfeed", "Workforce", "PayCaptain", "All Gravy", "Limber", "CrunchTime", "Nory"],
   },
   {
     id: "inventory",
-    label: "Inventory",
+    label: "Inventory & Stock Management",
     hint: "Stock, recipe, purchasing, GP tracking",
     icon: "📦",
     options: ["Apicbase", "MarketMan", "Nory", "Fourth", "Growyze", "Stocktake Online", "Purchase Warrior (triSaaS)", "Supy", "Inpulse", "Cinchio", "Peckish"],
   },
   {
     id: "loyalty",
-    label: "Loyalty / CRM",
+    label: "Loyalty & CRM",
     hint: "Guest data, repeat visits, marketing",
     icon: "⭐",
     options: ["Airship", "Como", "Klaviyo", "Bloomreach", "Pepper", "Acteol", "Embargo", "Stampede", "Paytronix", "Impact Data", "Cardlytics", "Fydelia", "Krowd"],
   },
   {
     id: "learning",
-    label: "Learning",
+    label: "Learning & Development",
     hint: "Training, L&D, team comms",
     icon: "🎓",
     options: ["Tayl", "CPL Learning", "5Mins AI", "Blink", "Zenzap", "Sideways", "Monotree"],
   },
 ];
 
-// Finance / Ops management — captured as a category-style question (tools +
+// Finance & Accounting — captured as a category-style question (tools +
 // NPS) but DELIBERATELY kept out of CATEGORIES so it does not change the
 // score, coverage %, or £ upside model (those iterate CATEGORIES only). The
 // data still lands in stack.finance_ops and flows to Slack + the AI review.
+// Label matches the portal's canonical 25-category taxonomy — do not rename
+// without confirming against tech_stack_entries.category on the portal.
 const FINANCE_OPS = {
   id: "finance_ops",
-  label: "Finance / Ops management",
-  hint: "Accounting, P&L, back-office reporting and ops analytics",
+  label: "Finance & Accounting",
+  hint: "Accounting, P&L, and back-office reporting",
   icon: "📊",
   options: ["Sage", "Xero", "QuickBooks", "Tenzo", "Tahola", "Nory", "Accurise", "FreeAgent", "Lightyear", "Independent accountant"],
 };
@@ -1061,12 +1068,12 @@ const DEEP_QUESTIONS = [
     help: "Where's the biggest headache right now?",
     type: "single",
     options: [
-      { id: "pos", label: "EPOS" },
+      { id: "pos", label: "Point of Sale" },
       { id: "payments", label: "Payments" },
-      { id: "workforce", label: "Workforce" },
-      { id: "inventory", label: "Inventory" },
-      { id: "loyalty", label: "Loyalty / CRM" },
-      { id: "learning", label: "Learning" },
+      { id: "workforce", label: "People Management" },
+      { id: "inventory", label: "Inventory & Stock Management" },
+      { id: "loyalty", label: "Loyalty & CRM" },
+      { id: "learning", label: "Learning & Development" },
       { id: "everything", label: "Everything hurts" },
       { id: "unsure", label: "Not sure yet" },
     ],

@@ -185,8 +185,8 @@ function buildSubmissionMessage(r: any) {
 }
 
 const painLabel = (v?: string) => ({
-  pos: "EPOS", payments: "Payments", workforce: "Workforce",
-  inventory: "Inventory", loyalty: "Loyalty / CRM", learning: "Learning",
+  pos: "Point of Sale", payments: "Payments", workforce: "People Management",
+  inventory: "Inventory & Stock Management", loyalty: "Loyalty & CRM", learning: "Learning & Development",
   everything: "Everything hurts", unsure: "Not sure yet",
 }[v ?? ""] ?? v ?? "—");
 
@@ -262,14 +262,19 @@ const SIZE_LABEL: Record<string, string> = {
   "6-20": "6–20 sites",
   "20+":  "20+ sites",
 };
+// Values land verbatim in tech_stack_entries.category on the approved-
+// reporting portal. Must exactly match the portal's 25-category taxonomy —
+// off-list values become orphaned categories in the dashboards.
+// Legacy `finance_ops` retained (never sent by the current frontend, kept
+// here as a safety net) and remapped to the canonical Analytics & Reporting.
 const CATEGORY_LABEL: Record<string, string> = {
-  pos:       "EPOS",
+  pos:       "Point of Sale",
   payments:  "Payments",
-  workforce: "Workforce",
-  inventory: "Inventory",
-  loyalty:   "Loyalty / CRM",
-  learning:  "Learning",
-  finance_ops: "Finance / Ops management",
+  workforce: "People Management",
+  inventory: "Inventory & Stock Management",
+  loyalty:   "Loyalty & CRM",
+  learning:  "Learning & Development",
+  finance_ops: "Finance & Accounting",
 };
 
 async function syncToStackcollect(r: any) {
