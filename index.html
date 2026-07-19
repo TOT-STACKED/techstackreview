@@ -412,6 +412,20 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
   const none = value.none === true;
   const other = value.other || "";
   const nps = value.nps || {};
+  // NPS is required for every picked tool (and the "other" free-text if
+  // filled). Rating with "none" checked is not required — that's a genuine
+  // skip. Rating with nothing picked at all is also allowed (they can move
+  // on without ticking anything, matching the current copy).
+  const otherTrimmed = other.trim();
+  const otherKey = otherTrimmed ? `__other__:${otherTrimmed}` : null;
+  const picksCount = none ? 0 : selected.length + (otherTrimmed ? 1 : 0);
+  const unratedPicks = none
+    ? []
+    : [
+        ...selected.filter(t => typeof nps[t] !== "number"),
+        ...(otherKey && typeof nps[otherKey] !== "number" ? [otherKey] : []),
+      ];
+  const canNext = unratedPicks.length === 0;
   return h("div", { className: "fade-in" },
     h("div", { className: "flex items-center gap-2 text-xs font-semibold text-toast uppercase tracking-wider mb-2" },
       h("span", null, category.icon),
@@ -468,9 +482,15 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
       className: `text-sm underline ${none ? "text-brand font-semibold" : "text-muted hover:text-cream"}`,
     }, none ? "✓ We don't use anything here" : "We don't use anything here / not sure"),
 
-    h("div", { className: "mt-10 flex items-center justify-between" },
+    !canNext && h("p", { className: "mt-8 text-sm text-toast" },
+      picksCount === 1
+        ? "Rate the tool you picked from 0–10 to continue."
+        : `Rate all ${picksCount} tools you picked from 0–10 to continue.`
+    ),
+
+    h("div", { className: "mt-4 flex items-center justify-between" },
       canBack ? h(GhostBtn, { onClick: onBack }, "← Back") : h("span"),
-      h(PrimaryBtn, { onClick: onNext }, "Continue →")
+      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
     )
   );
 }
