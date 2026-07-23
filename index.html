@@ -174,6 +174,90 @@ const FINANCE_OPS = {
 // Per-site annual savings & weekly hours saved when an operator adopts a tool in this category.
 // Numbers are directional industry benchmarks for a typical UK site doing ~£800k–£1.2m revenue.
 // Conservative per-site benchmarks. Intentionally at the low end of what operators
+// ---------- TOOL DESCRIPTIONS ----------
+// Short 1-line descriptions shown as a hover tooltip on each tool card. Only
+// tools listed here get an info icon — anything else renders the card cleanly
+// without a tooltip. Descriptions are factual/neutral (no "recommended" tone)
+// since the bot handles the actual recommendation.
+const TOOL_DESCRIPTIONS = {
+  // POS
+  "Toast":            "US-built hospitality POS with native kiosk, KDS, payments and inventory in one integrated stack.",
+  "Lightspeed":       "Cloud POS with the widest integration ecosystem; kiosk via Jamezz partner, deep native reporting.",
+  "Zonal":            "UK legacy POS with a closed ecosystem — integrations charged for, ties operators into Zonal Group tools.",
+  "Tissl":            "UK POS used by pub and casual dining operators.",
+  "Tevalis":          "UK enterprise POS with on-site server architecture; strong in pub groups; works with third-party payment providers like Dojo.",
+  "Kobas":            "UK cloud POS for independent restaurants and small groups.",
+  "Tebi":             "European cloud POS with integrated payments, built for simple hospitality operations.",
+  "Square":           "Simple cloud POS suited to cafes, bakeries and low-complexity operations at any site count.",
+  "SumUp POS":        "Entry-level POS from SumUp — simple ops, single site.",
+  "SkyTab":           "Shift4-owned POS with hospitality features and integrated payments.",
+  "Tabology":         "UK POS for hospitality with reporting and integrations.",
+  "Pointone":         "UK POS with a hospitality focus.",
+  "Redcat":           "Australian-built POS used by some UK QSR operators.",
+  "Shopwave":         "UK cloud POS used by QSR and casual dining operators.",
+  "Vita Mojo":        "UK order & pay + POS platform, common in fast casual with strong menu/ordering capability.",
+
+  // Payments
+  "Dojo":              "UK card payment provider — 36-month per-site contracts; works with open POS platforms (Tevalis, WRS, Zonal, Comtrex) but NOT Lightspeed or Toast.",
+  "DNA Payments":      "UK card payment provider.",
+  "Lightspeed Payments": "Native to Lightspeed POS — mandatory when using Lightspeed, no third-party option.",
+  "sunday":            "Pay-at-table QR platform, popular in casual dining.",
+  "Atoa":              "UK open-banking payment provider — lower card fees using bank-to-bank rails.",
+  "SumUp":             "Card terminals with simple flat-rate pricing; common at cafes and single sites.",
+  "Tebi":              "Integrated payments from Tebi POS.",
+  "TipJar":            "Digital tipping and TRONC platform.",
+  "JustTip":           "Digital tipping platform for hospitality teams.",
+
+  // Workforce / People Management
+  "Bizimply":          "UK workforce and scheduling platform; well-suited to single sites and smaller groups.",
+  "Connect Frontline": "Frontline-team platform — sits at the intersection of workforce, staff comms and engagement.",
+  "Deputy":            "Global scheduling and time-tracking tool, simpler and widely used.",
+  "Planday":           "Xero-owned workforce and scheduling platform used across hospitality.",
+  "Fourth":            "Established workforce/payroll platform, common in managed pub estates and large groups.",
+  "Harri":             "US-born HR and workforce platform used by some UK hospitality operators.",
+  "Rotaready":         "Scheduling tool; does not integrate with Lightspeed.",
+  "s4labour":          "UK labour optimisation platform.",
+  "Sona":              "AI-powered workforce management for hospitality.",
+  "Brigad":            "Flexible on-demand hospitality staffing.",
+  "PayCaptain":        "UK payroll platform focused on financial wellbeing.",
+  "All Gravy":         "Employee engagement platform gaining traction in hospitality.",
+  "Limber":            "Flexible staffing marketplace.",
+  "Nory":              "Multi-site inventory AND scheduling in one platform; won't take single-site operators; integrates with Xero for franchise consolidated invoicing.",
+
+  // Inventory
+  "Apicbase":          "Advanced production and inventory platform, built for central kitchens and complex batch recipes.",
+  "MarketMan":         "Standalone multi-site inventory platform with recipe costing and supplier ordering.",
+  "Growyze":           "UK stock control platform for hospitality.",
+  "Supy":              "Middle Eastern-born inventory platform used by growing hospitality groups.",
+  "Peckish":           "Inventory platform for hospitality.",
+
+  // Loyalty / CRM
+  "Airship":           "CRM platform for email marketing and customer data; now part of Zonal Group.",
+  "Acteol":            "UK guest data and marketing platform.",
+  "Stampede":          "UK guest engagement + WiFi marketing platform.",
+  "Paytronix":         "Enterprise loyalty and CRM platform for larger operators.",
+
+  // Learning
+  "Sideways":          "Sideways AI — hospitality-built L&D platform, strong on compliance content (food safety, allergens, licensing).",
+  "Monotree":          "Employee engagement and onboarding platform, pairs with Sideways AI for combined L&D + engagement.",
+  "Tayl":              "UK L&D platform for hospitality teams.",
+  "CPL Learning":      "UK hospitality training and compliance platform.",
+  "5Mins AI":          "AI-driven micro-learning platform.",
+  "Blink":             "Employee comms and engagement app for frontline workers.",
+  "Zenzap":            "Purpose-built hospitality staff comms — the professional alternative to WhatsApp with audit trail and management layer.",
+
+  // Finance / Ops (from FINANCE_OPS)
+  "Sage":              "Accounting platform widely used in UK SMEs.",
+  "Xero":              "Cloud accounting platform; integrates with Nory for franchise consolidated invoicing.",
+  "QuickBooks":        "Intuit's cloud accounting platform.",
+  "Tenzo":             "Operator-facing analytics platform for hospitality — labour vs sales, P&L visibility, benchmarking.",
+  "Tahola":            "Hospitality analytics and reporting platform.",
+  "Accurise":          "Hospitality-focused accounting service.",
+  "FreeAgent":         "UK cloud accounting for small businesses.",
+  "Lightyear":         "AP automation and invoice processing platform.",
+  "Independent accountant": "External accountant handling the books manually — common at single sites and small groups.",
+};
+
 // typically claim. Gap savings use the full figure; switching/renegotiation claws
 // back only ~10% of it (most of the value is already captured if you have a tool).
 const ROI = {
@@ -439,6 +523,7 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
     h("div", { className: "grid grid-cols-2 md:grid-cols-3 gap-3 mb-4" },
       category.options.map(opt => {
         const isSel = !none && selected.includes(opt);
+        const desc = TOOL_DESCRIPTIONS[opt];
         return h("div", { key: opt, className: "flex flex-col gap-2" },
           h(Card, {
             selected: isSel,
@@ -447,7 +532,24 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
           },
             h("div", { className: "flex items-center justify-between gap-2" },
               h("span", { className: "font-medium text-sm" }, opt),
-              isSel && h("span", { className: "text-toast" }, "✓")
+              h("div", { className: "flex items-center gap-1.5 shrink-0" },
+                desc && h("div", {
+                  // Info icon: hovering it (not the whole card) shows the
+                  // tooltip. Using `group` + `group-hover` on the icon
+                  // scopes reveal to this icon alone. onClick stops
+                  // propagation so tapping the ⓘ on mobile doesn't select
+                  // the card by accident.
+                  className: "group relative inline-flex items-center justify-center w-4 h-4 rounded-full border border-line text-[10px] text-muted hover:text-brand hover:border-brand cursor-help transition",
+                  "aria-label": `About ${opt}`,
+                  onClick: (e) => e.stopPropagation(),
+                },
+                  h("span", null, "i"),
+                  h("div", {
+                    className: "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-30 w-56 normal-case tracking-normal font-normal pointer-events-none",
+                  }, h("div", { className: "bg-brandDeep border border-brand/60 rounded-lg shadow-xl px-3 py-2 text-xs text-cream leading-snug text-left" }, desc))
+                ),
+                isSel && h("span", { className: "text-toast" }, "✓")
+              )
             )
           ),
           isSel && h("div", { className: "px-1" },
