@@ -917,6 +917,16 @@ these criteria:
 - A good starting point before an operator needs the forecasting and
   compliance depth of Workforce or Nory.
 
+**Connect Frontline**
+
+- Frontline-team platform used by some UK hospitality operators. Sits at
+  the intersection of workforce, staff comms and engagement — where an
+  operator uses it varies.
+- If it appears in an operator's stack, comment on their NPS rating and
+  what it's covering for them (rotas, comms, engagement) rather than
+  guessing at features. Specific fit and comparison is best routed to
+  the Tech on Toast team.
+
 **Lightspeed built-in scheduling**
 
 - Adequate for basic rota management at single sites.
