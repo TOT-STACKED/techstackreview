@@ -328,7 +328,10 @@ async function syncToStackcollect(r: any) {
     const entries: Array<{ submission_id: string; category: string; tool_name: string; nps: number | null }> = [];
     for (const [catId, sRaw] of Object.entries<any>(stack)) {
       const s = sRaw || {};
-      const catLabel = CATEGORY_LABEL[catId] ?? catId;
+      // Portal-side agreement: never send a blank category. Fall back to
+      // "Other" (a canonical value on their taxonomy) when the catId isn't
+      // in CATEGORY_LABEL and there's no usable string to fall back to.
+      const catLabel = (CATEGORY_LABEL[catId] || String(catId || "").trim() || "Other");
       const catNps = (s.nps && typeof s.nps === "object") ? s.nps : {};
       for (const t of (s.tools ?? [])) {
         if (!t) continue;
@@ -369,6 +372,12 @@ async function syncToStackcollect(r: any) {
     }
 
     // Fan-out per-product NPS into the portal's unified nps_scores table.
+    // Both submission_id (the FK the portal's per-operator dashboards join
+    // on) and external_id (kept for backward compat with earlier rows) point
+    // at the same business_submissions row. Setting only external_id
+    // previously caused NPS ratings to appear in vendor aggregates but not
+    // on the operator's own record — the "Flora/Bado bug" the portal team
+    // fixed by hand.
     const npsRows = entries
       .filter(e => typeof e.nps === "number")
       .map(e => ({
@@ -380,6 +389,7 @@ async function syncToStackcollect(r: any) {
         respondent_name:  contactName,
         respondent_email: r.email ?? null,
         company:          r.company ?? null,
+        submission_id:    bizRow.id,
         external_id:      bizRow.id,
       }));
     if (npsRows.length > 0) {
