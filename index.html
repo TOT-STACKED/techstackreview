@@ -272,6 +272,26 @@ const ROI = {
 function siteMultiplier(sites) {
   return { "1": 1, "2-5": 3, "6-20": 10, "20+": 25 }[sites] || 1;
 }
+
+// Total count of tools the operator picked across every category, and how
+// many of them they've rated (0–10). Used by GateStep's progress counter
+// and by the soft submit gate.
+function tallyRatings(stack) {
+  let picked = 0;
+  let rated = 0;
+  for (const cat of Object.values(stack || {})) {
+    if (!cat || cat.none) continue;
+    const tools = Array.isArray(cat.tools) ? cat.tools : [];
+    const otherRaw = (cat.other || "").toString().trim();
+    const npsMap = (cat.nps && typeof cat.nps === "object") ? cat.nps : {};
+    picked += tools.length + (otherRaw ? 1 : 0);
+    for (const t of tools) {
+      if (typeof npsMap[t] === "number") rated++;
+    }
+    if (otherRaw && typeof npsMap[`__other__:${otherRaw}`] === "number") rated++;
+  }
+  return { picked, rated };
+}
 function fmtGBP(n) {
   if (n >= 1000000) return "£" + (n / 1000000).toFixed(1) + "m";
   if (n >= 1000) return "£" + Math.round(n / 100) / 10 + "k";
@@ -496,20 +516,6 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
   const none = value.none === true;
   const other = value.other || "";
   const nps = value.nps || {};
-  // NPS is required for every picked tool (and the "other" free-text if
-  // filled). Rating with "none" checked is not required — that's a genuine
-  // skip. Rating with nothing picked at all is also allowed (they can move
-  // on without ticking anything, matching the current copy).
-  const otherTrimmed = other.trim();
-  const otherKey = otherTrimmed ? `__other__:${otherTrimmed}` : null;
-  const picksCount = none ? 0 : selected.length + (otherTrimmed ? 1 : 0);
-  const unratedPicks = none
-    ? []
-    : [
-        ...selected.filter(t => typeof nps[t] !== "number"),
-        ...(otherKey && typeof nps[otherKey] !== "number" ? [otherKey] : []),
-      ];
-  const canNext = unratedPicks.length === 0;
   return h("div", { className: "fade-in" },
     h("div", { className: "flex items-center gap-2 text-xs font-semibold text-toast uppercase tracking-wider mb-2" },
       h("span", null, category.icon),
@@ -584,26 +590,24 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
       className: `text-sm underline ${none ? "text-brand font-semibold" : "text-muted hover:text-cream"}`,
     }, none ? "✓ We don't use anything here" : "We don't use anything here / not sure"),
 
-    !canNext && h("p", { className: "mt-8 text-sm text-toast" },
-      picksCount === 1
-        ? "Rate the tool you picked from 0–10 to continue."
-        : `Rate all ${picksCount} tools you picked from 0–10 to continue.`
-    ),
-
-    h("div", { className: "mt-4 flex items-center justify-between" },
+    h("div", { className: "mt-10 flex items-center justify-between" },
       canBack ? h(GhostBtn, { onClick: onBack }, "← Back") : h("span"),
-      h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
+      h(PrimaryBtn, { onClick: onNext }, "Continue →")
     )
   );
 }
 
-function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
+function GateStep({ value, onChange, onSubmit, onBack, preview, submitState, ratings, onGoToRatings }) {
   const { firstName, lastName, email, phone, company, location, consent, hp } = value;
   const emailOk = /.+@.+\..+/.test(email || "");
   // Allow +, digits, spaces, hyphens, parens; require at least 7 digits
   const phoneOk = (phone || "").replace(/\D/g, "").length >= 7;
   const submitting = submitState && submitState.status === "submitting";
   const canSubmit = firstName && lastName && emailOk && phoneOk && company && location && consent && !submitting;
+  const picked = ratings?.picked ?? 0;
+  const rated = ratings?.rated ?? 0;
+  const pct = picked > 0 ? Math.round((rated / picked) * 100) : 0;
+  const ratingBlocked = submitState && submitState.status === "error" && submitState.code === "no_ratings";
   return h("div", { className: "fade-in max-w-xl mx-auto" },
     h("div", { className: "rounded-2xl bg-canvas border border-line p-8" },
       h("div", { className: "text-xs font-semibold text-toast uppercase tracking-wider mb-2" }, "One more step"),
@@ -692,13 +696,37 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState }) {
           onChange: e => onChange({ ...value, hp: e.target.value }),
         }),
       ),
-      submitState && submitState.status === "error" && h("div", {
+      ratingBlocked && h("div", {
+        className: "mt-4 rounded-xl bg-red-950/40 border border-red-500/40 text-red-200 text-sm p-4",
+      },
+        h("div", { className: "font-semibold text-red-100 mb-1" }, "Rate at least one product before submitting"),
+        h("p", { className: "mb-2" },
+          "Your ratings help us build accurate market insights and match you to better tools. Even one rating makes a difference."
+        ),
+        h("button", {
+          className: "underline font-medium text-red-100 hover:text-white",
+          onClick: onGoToRatings,
+        }, "Take me to the ratings →")
+      ),
+      submitState && submitState.status === "error" && submitState.code !== "no_ratings" && h("div", {
         className: "mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3",
       }, "Sorry, couldn't save your submission. ", submitState.error || "Please try again."),
       h("div", { className: "mt-6 flex items-center justify-between" },
         h(GhostBtn, { onClick: onBack }, "← Back"),
         h(PrimaryBtn, { onClick: onSubmit, disabled: !canSubmit },
           submitting ? "Sending…" : "Show my report →"
+        )
+      ),
+      picked > 0 && h("div", { className: "mt-4" },
+        h("div", { className: "flex items-center justify-between text-xs text-muted mb-1.5" },
+          h("span", null, `${rated} of ${picked} products rated`),
+          h("span", null, `${pct}%`)
+        ),
+        h("div", { className: "h-1 bg-line rounded-full overflow-hidden" },
+          h("div", {
+            className: "h-full bg-brand transition-all duration-300",
+            style: { width: `${pct}%` }
+          })
         )
       )
     ),
@@ -1519,6 +1547,35 @@ function App() {
     };
   }, [step, venue, stack]);
 
+  // Live rating tally across every category — fed to GateStep's progress bar
+  // and used by submitLead's soft gate (block only if picked > 0 & rated = 0).
+  const ratings = useMemo(() => tallyRatings(stack), [stack]);
+
+  // Navigate the user back to the first category step where they picked
+  // tools but haven't rated them all. Wired to the "Take me to the ratings"
+  // link on a blocked submit.
+  function goToRatings() {
+    const catOrder = CATEGORIES.map(c => c.id);
+    for (let i = 0; i < catOrder.length; i++) {
+      const c = stack[catOrder[i]];
+      if (!c || c.none) continue;
+      const tools = Array.isArray(c.tools) ? c.tools : [];
+      const other = (c.other || "").trim();
+      const npsMap = (c.nps && typeof c.nps === "object") ? c.nps : {};
+      const hasUnrated = tools.some(t => typeof npsMap[t] !== "number")
+        || (other && typeof npsMap[`__other__:${other}`] !== "number");
+      if (hasUnrated) { setStep(FIRST_CAT_STEP + i); return; }
+    }
+    // Fallback — nothing picked-and-unrated in the core 6, check finance/ops.
+    const fo = stack[FINANCE_OPS.id];
+    if (fo && !fo.none && ((fo.tools || []).length > 0 || (fo.other || "").trim())) {
+      setStep(FINANCE_STEP);
+      return;
+    }
+    // No unrated picks anywhere — send them to the first category to add ratings.
+    setStep(FIRST_CAT_STEP);
+  }
+
   const [submitState, setSubmitState] = useState({ status: "idle", error: "" });
   // AI-written review state. Loaded asynchronously after the row is inserted.
   // status: idle | loading | done | error.
@@ -1527,6 +1584,15 @@ function App() {
   async function submitLead() {
     // Honeypot: if filled by a bot, silently advance without sending.
     if (lead.hp) { setStep(REPORT_STEP); return; }
+    // Soft NPS gate: if the operator picked at least one tool but hasn't
+    // rated any of them, block submission and prompt them to rate one.
+    // Rating even a single tool is enough to proceed — this is deliberately
+    // low friction (hard-per-tool gating drove abandonment).
+    const t = tallyRatings(stack);
+    if (t.picked > 0 && t.rated === 0) {
+      setSubmitState({ status: "error", code: "no_ratings", error: "Rate at least one product before submitting." });
+      return;
+    }
     const r = buildReport({ venue, stack });
     // Flatten per-category NPS into a single { tool_name: score } map for dashboards.
     // Keys prefixed with "__other__:" are stripped of the marker so the vendor name
@@ -1745,6 +1811,8 @@ function App() {
         onBack: () => setStep(step - 1),
         preview: gatePreview,
         submitState: submitState,
+        ratings: ratings,
+        onGoToRatings: goToRatings,
       }),
 
       step === REPORT_STEP && deepStep === null && h(Report, { venue, stack, lead, aiReview, onReset: reset, onStartDeep: () => setDeepStep(0) }),
