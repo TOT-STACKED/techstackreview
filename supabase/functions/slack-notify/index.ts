@@ -378,8 +378,23 @@ async function syncToStackcollect(r: any) {
     // previously caused NPS ratings to appear in vendor aggregates but not
     // on the operator's own record — the "Flora/Bado bug" the portal team
     // fixed by hand.
+    //
+    // Dedupe by (submission_id, vendor) — the portal has a unique index
+    // (nps_scores_product_selection_unique_idx) that permits one rating per
+    // vendor per submission. Operators sometimes pick the same tool in two
+    // categories (e.g. a POS with built-in inventory listed under both POS
+    // and Inventory); before this dedupe the whole batch rolled back and the
+    // operator lost ALL their NPS scores (the "Boxpark bug", Jul 2026).
+    // Keep the first occurrence — categories are just labels on the score.
+    const seenVendors = new Set<string>();
     const npsRows = entries
       .filter(e => typeof e.nps === "number")
+      .filter(e => {
+        const key = String(e.tool_name).trim().toLowerCase();
+        if (seenVendors.has(key)) return false;
+        seenVendors.add(key);
+        return true;
+      })
       .map(e => ({
         source:           "techstackreview",
         touchpoint:       "product-selection",
