@@ -381,6 +381,18 @@ const SITE_OPTIONS = [
   { id: "20+", label: "20+ sites" },
 ];
 
+// Derive the legacy band string ("1" | "2-5" | "6-20" | "20+") from an exact
+// site count. Kept so segmentFor / siteMultiplier / SIZE_LABEL and every
+// downstream dashboard that expected bands keep working; the exact number
+// travels alongside as site_count in the payload.
+function bandForSiteCount(n) {
+  if (!n || n < 1) return "";
+  if (n === 1) return "1";
+  if (n <= 5) return "2-5";
+  if (n <= 20) return "6-20";
+  return "20+";
+}
+
 // ---------- UI PRIMITIVES ----------
 function Progress({ step, total }) {
   const pct = Math.round((step / total) * 100);
@@ -451,8 +463,8 @@ function Intro({ onStart }) {
 }
 
 function VenueStep({ value, onChange, onNext }) {
-  const { type, sites } = value;
-  const canNext = !!type && !!sites;
+  const { type, siteCount } = value;
+  const canNext = !!type && Number(siteCount) >= 1;
   return h("div", { className: "fade-in" },
     h("h2", { className: "font-display text-2xl md:text-3xl font-bold mb-1" }, "Tell us about your venue"),
     h("p", { className: "text-muted mb-6" }, "So we can match you to the right peer group."),
@@ -473,16 +485,25 @@ function VenueStep({ value, onChange, onNext }) {
         ))
       ),
     ),
-    h("div", null,
-      h("div", { className: "text-sm font-semibold mb-3" }, "Number of sites"),
-      h("div", { className: "grid grid-cols-2 md:grid-cols-4 gap-3" },
-        SITE_OPTIONS.map(s => h(Card, {
-          key: s.id,
-          selected: sites === s.id,
-          onClick: () => onChange({ ...value, sites: s.id }),
-          compact: true,
-        }, h("div", { className: "text-center font-medium" }, s.label)))
-      ),
+    h("div", { className: "max-w-xs" },
+      h("label", { className: "text-sm font-semibold mb-3 block", htmlFor: "site-count" }, "How many sites?"),
+      h("input", {
+        id: "site-count",
+        type: "number",
+        min: 1,
+        max: 9999,
+        step: 1,
+        inputMode: "numeric",
+        placeholder: "e.g. 3",
+        value: siteCount ?? "",
+        onChange: e => {
+          const raw = e.target.value;
+          const n = raw === "" ? "" : Math.max(1, parseInt(raw, 10) || 0);
+          onChange({ ...value, siteCount: n });
+        },
+        className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted text-lg font-medium",
+      }),
+      h("p", { className: "text-xs text-muted mt-2" }, "Total number of physical venues your brand runs."),
     ),
     h("div", { className: "mt-10 flex justify-end" },
       h(PrimaryBtn, { onClick: onNext, disabled: !canNext }, "Continue →")
@@ -598,7 +619,7 @@ function CategoryStep({ category, value, onToggle, onNone, onOtherChange, onRate
 }
 
 function GateStep({ value, onChange, onSubmit, onBack, preview, submitState, ratings, onGoToRatings }) {
-  const { firstName, lastName, email, phone, company, location, consent, hp } = value;
+  const { firstName, lastName, email, phone, company, brandName, location, consent, hp } = value;
   const emailOk = /.+@.+\..+/.test(email || "");
   // Allow +, digits, spaces, hyphens, parens; require at least 7 digits
   const phoneOk = (phone || "").replace(/\D/g, "").length >= 7;
@@ -663,7 +684,13 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState, rat
         }),
         h("input", {
           className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
-          placeholder: "Venue / company name",
+          placeholder: "Brand trading name (e.g. TGI Fridays)",
+          value: brandName || "",
+          onChange: e => onChange({ ...value, brandName: e.target.value }),
+        }),
+        h("input", {
+          className: "w-full px-4 py-3 rounded-xl border border-line focus:border-brand outline-none bg-brandDeep text-cream placeholder:text-muted",
+          placeholder: "Venue / company name (this specific site)",
           value: company || "",
           onChange: e => onChange({ ...value, company: e.target.value }),
         }),
@@ -738,9 +765,10 @@ function GateStep({ value, onChange, onSubmit, onBack, preview, submitState, rat
 
 // ---------- REPORT ----------
 function buildReport({ venue, stack }) {
-  const segment = segmentFor(venue.type, venue.sites);
+  const sitesBand = bandForSiteCount(Number(venue.siteCount) || 0);
+  const segment = segmentFor(venue.type, sitesBand);
   const bench = BENCHMARKS[segment];
-  const mult = siteMultiplier(venue.sites);
+  const mult = siteMultiplier(sitesBand);
 
   const covered = CATEGORIES.filter(c => {
     const s = stack[c.id] || {};
@@ -1450,11 +1478,11 @@ async function postDeepReview(payload, anonKey, baseUrl) {
 // ---------- APP ----------
 function App() {
   const [step, setStep] = useState(0);
-  const [venue, setVenue] = useState({ type: "", sites: "" });
+  const [venue, setVenue] = useState({ type: "", siteCount: "" });
   const [stack, setStack] = useState({}); // { [catId]: { tools: [], other: "", none: bool } }
   const [usesWhatsapp, setUsesWhatsapp] = useState(null); // true | false | null (unanswered)
   const [hasKnowledgeBase, setHasKnowledgeBase] = useState(null); // true | false | null
-  const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
+  const [lead, setLead] = useState({ firstName: "", lastName: "", email: "", phone: "", company: "", brandName: "", location: "", consent: false, hp: "" });
 
   // Stage 2 state: null (not started) | 0..5 (question index) | "submitting" | "thanks"
   const [deepStep, setDeepStep] = useState(null);
@@ -1619,10 +1647,13 @@ function App() {
           const r = Math.random() * 16 | 0;
           return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
         });
+    const siteCountNum = Number(venue.siteCount) || 0;
+    const sitesBand = bandForSiteCount(siteCountNum);
     const payload = {
       id: submissionId,
       venue_type: venue.type,
-      sites: venue.sites,
+      sites: sitesBand,
+      site_count: siteCountNum,
       stack,
       product_nps: productNps,
       nps_avg: npsAvg,
@@ -1631,6 +1662,7 @@ function App() {
       email: lead.email,
       phone_number: lead.phone,
       company: lead.company,
+      brand_trading_name: lead.brandName || null,
       location: lead.location,
       consent: !!lead.consent,
       uses_whatsapp: usesWhatsapp,
@@ -1674,9 +1706,9 @@ function App() {
     }
   }
   function reset() {
-    setStep(0); setVenue({ type: "", sites: "" }); setStack({});
+    setStep(0); setVenue({ type: "", siteCount: "" }); setStack({});
     setUsesWhatsapp(null);
-    setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", location: "", consent: false, hp: "" });
+    setLead({ firstName: "", lastName: "", email: "", phone: "", company: "", brandName: "", location: "", consent: false, hp: "" });
     setSubmitState({ status: "idle", error: "" });
     setAiReview({ status: "idle", text: "", error: "" });
     setUsesWhatsapp(null);

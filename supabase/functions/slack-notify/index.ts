@@ -334,6 +334,14 @@ async function syncToStackcollect(r: any) {
     // Lets the portal surface the WhatsApp Yes/No panel without reading the
     // source submissions table cross-project. Older rows have null.
     uses_whatsapp:        r.uses_whatsapp ?? null,
+    // Forwarded from submissions.brand_trading_name + submissions.site_count
+    // (techstackreview migration 010). brand_trading_name identifies the
+    // umbrella operator for a multi-site chain; site_count is the exact number
+    // of physical venues that operator runs. Both populate the corresponding
+    // manual fields on Airtable Venues via approved-reporting's tech-usage-sync,
+    // so marketplace partner tiles read real site counts, not just row counts.
+    brand_trading_name:   r.brand_trading_name ?? null,
+    site_count:           typeof r.site_count === "number" ? r.site_count : null,
     // Forwarded from submissions.has_knowledge_base (techstackreview migration
     // 009). Identifies operators without a team knowledge base — the natural
     // audience for the free Stacked Chat offering.
