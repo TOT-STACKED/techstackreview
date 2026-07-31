@@ -24,6 +24,29 @@ const WEBHOOK_SECRET             = Deno.env.get("WEBHOOK_SECRET");
 const STACKCOLLECT_SUPABASE_URL  = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
 const STACKCOLLECT_SUPABASE_KEY  = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
 const AIRTABLE_API_KEY           = Deno.env.get("AIRTABLE_API_KEY");
+// Alerts channel for silent sync failures. Was diagnosed Jul 2026 when Sprout
+// & Popeyes submissions never made it to the portal — the failures were only
+// logged to Supabase function logs (which nobody watches). Posts here on any
+// sync/forward catch so the on-call sees it in real time.
+const SYNC_ALERT_SLACK_WEBHOOK_URL = Deno.env.get("SYNC_ALERT_SLACK_WEBHOOK_URL");
+
+async function alertSyncFailure(stage: string, r: any, error: any) {
+  if (!SYNC_ALERT_SLACK_WEBHOOK_URL) return;
+  const msg = (error && error.message) ? error.message : String(error);
+  const company = r?.company ?? "unknown";
+  const submissionId = r?.id ?? "unknown";
+  const email = r?.email ?? "unknown";
+  const text = `:rotating_light: *Stack review sync failure* — \`${stage}\`\n*Company:* ${company}\n*Submission ID:* \`${submissionId}\`\n*Email:* ${email}\n*Error:* \`\`\`${msg.slice(0, 800)}\`\`\``;
+  try {
+    await fetch(SYNC_ALERT_SLACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch (_) {
+    // Alert itself failed — nothing we can safely do. Original error is already logged.
+  }
+}
 
 // Master Lead Sheet → "Master View" table. Forward just the contact details
 // of every new submission so the sales pipeline picks up the lead. IDs are
@@ -96,12 +119,15 @@ async function forwardToAirtable(r: any) {
       },
     );
     if (!res.ok) {
-      console.error(`[airtable] forward failed ${res.status}: ${await res.text().catch(() => "")}`);
+      const bodyText = await res.text().catch(() => "");
+      console.error(`[airtable] forward failed ${res.status}: ${bodyText}`);
+      await alertSyncFailure("airtable-forward", r, `HTTP ${res.status}: ${bodyText}`);
     } else {
       console.error(`[airtable] lead forwarded: ${r.company ?? r.email ?? "?"}`);
     }
   } catch (e) {
     console.error("[airtable] forward threw", e);
+    await alertSyncFailure("airtable-forward", r, e);
   }
 }
 
@@ -317,7 +343,9 @@ async function syncToStackcollect(r: any) {
       body: JSON.stringify(biz),
     });
     if (!bizRes.ok) {
-      console.error("[stackcollect] business_submissions insert failed", bizRes.status, await bizRes.text().catch(() => ""));
+      const bodyText = await bizRes.text().catch(() => "");
+      console.error("[stackcollect] business_submissions insert failed", bizRes.status, bodyText);
+      await alertSyncFailure("stackcollect-business", r, `HTTP ${bizRes.status}: ${bodyText}`);
       return;
     }
     const bizRows = await bizRes.json();
@@ -367,7 +395,9 @@ async function syncToStackcollect(r: any) {
         body: JSON.stringify(legacyEntries),
       });
       if (!entriesRes.ok) {
-        console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, await entriesRes.text().catch(() => ""));
+        const bodyText = await entriesRes.text().catch(() => "");
+        console.error("[stackcollect] tech_stack_entries insert failed", entriesRes.status, bodyText);
+        await alertSyncFailure("stackcollect-entries", r, `HTTP ${entriesRes.status}: ${bodyText}`);
       }
     }
 
@@ -414,11 +444,14 @@ async function syncToStackcollect(r: any) {
         body: JSON.stringify(npsRows),
       });
       if (!npsRes.ok) {
-        console.error("[stackcollect] nps_scores insert failed", npsRes.status, await npsRes.text().catch(() => ""));
+        const bodyText = await npsRes.text().catch(() => "");
+        console.error("[stackcollect] nps_scores insert failed", npsRes.status, bodyText);
+        await alertSyncFailure("stackcollect-nps", r, `HTTP ${npsRes.status}: ${bodyText}`);
       }
     }
   } catch (e) {
     console.error("[stackcollect] sync threw", e);
+    await alertSyncFailure("stackcollect-sync", r, e);
   }
 }
 
@@ -447,10 +480,16 @@ serve(async (req) => {
   // Fan-out to the portal's Supabase on stage 1 submissions. Best-effort, non-blocking.
   if (tbl === "submissions") {
     // Deliberately not awaited — Slack should fire regardless of portal sync outcome.
-    syncToStackcollect(r).catch((e) => console.error("[stackcollect] unhandled", e));
+    syncToStackcollect(r).catch(async (e) => {
+      console.error("[stackcollect] unhandled", e);
+      await alertSyncFailure("stackcollect-unhandled", r, e);
+    });
     // Forward contact details to the Master Lead Sheet (Airtable). Also
     // fire-and-forget — Slack must not depend on it.
-    forwardToAirtable(r).catch((e) => console.error("[airtable] unhandled", e));
+    forwardToAirtable(r).catch(async (e) => {
+      console.error("[airtable] unhandled", e);
+      await alertSyncFailure("airtable-unhandled", r, e);
+    });
   }
 
   const slackRes = await fetch(SLACK_WEBHOOK_URL, {
