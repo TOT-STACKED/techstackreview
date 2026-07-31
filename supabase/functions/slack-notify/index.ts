@@ -28,7 +28,11 @@ const AIRTABLE_API_KEY           = Deno.env.get("AIRTABLE_API_KEY");
 // & Popeyes submissions never made it to the portal — the failures were only
 // logged to Supabase function logs (which nobody watches). Posts here on any
 // sync/forward catch so the on-call sees it in real time.
-const SYNC_ALERT_SLACK_WEBHOOK_URL = Deno.env.get("SYNC_ALERT_SLACK_WEBHOOK_URL");
+// Falls back to SLACK_WEBHOOK_URL (the new-submission channel) so alerts are
+// on by default; override with SYNC_ALERT_SLACK_WEBHOOK_URL to route them
+// into a dedicated #sync-alerts channel.
+const SYNC_ALERT_SLACK_WEBHOOK_URL =
+  Deno.env.get("SYNC_ALERT_SLACK_WEBHOOK_URL") || SLACK_WEBHOOK_URL;
 
 async function alertSyncFailure(stage: string, r: any, error: any) {
   if (!SYNC_ALERT_SLACK_WEBHOOK_URL) return;
