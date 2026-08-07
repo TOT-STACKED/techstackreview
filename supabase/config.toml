@@ -1,0 +1,15 @@
+project_id = "kohnakdevwfudzgfjmab"
+
+# Both edge functions are called by non-user callers:
+#   - slack-notify: invoked by the pg_net trigger on submissions/deep_reviews
+#     with our own WEBHOOK_SECRET bearer, NOT a Supabase JWT.
+#   - stack-review: invoked by the frontend anonymously (no auth); the function
+#     uses the service-role key to read the submission itself.
+# Without verify_jwt = false the platform 401s every call BEFORE the function
+# runs (JWT format check). This bit us on 2026-07-28 when a redeploy without
+# --no-verify-jwt silently blocked ALL trigger callbacks for a week.
+[functions.slack-notify]
+verify_jwt = false
+
+[functions.stack-review]
+verify_jwt = false
