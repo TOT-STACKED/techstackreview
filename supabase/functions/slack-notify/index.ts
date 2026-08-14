@@ -489,19 +489,30 @@ serve(async (req) => {
     ? buildDeepReviewMessage(r)
     : buildSubmissionMessage(r);
 
-  // Fan-out to the portal's Supabase on stage 1 submissions. Best-effort, non-blocking.
+  // Fan-out to the portal's Supabase + Master Lead Sheet on stage 1 submissions.
+  //
+  // MUST await here (Promise.allSettled so a single failure doesn't cascade).
+  // These used to be fire-and-forget for a "fast Slack" win — but Deno Deploy /
+  // Supabase Edge terminates the isolate as soon as the response returns, and
+  // Lovable's sync makes THREE sequential REST hops (business_submissions →
+  // tech_stack_entries → nps_scores). Airtable's single POST usually completed
+  // in time, so the Master Lead Sheet stayed populated while Lovable silently
+  // dropped every submission. Diagnosed 2026-08-13 when Adventure Golf +
+  // Fulham Shore appeared in Airtable but never in the portal.
+  //
+  // Cost: Slack ping arrives ~1–2s later. Acceptable — sync completeness > latency.
   if (tbl === "submissions") {
-    // Deliberately not awaited — Slack should fire regardless of portal sync outcome.
-    syncToStackcollect(r).catch(async (e) => {
-      console.error("[stackcollect] unhandled", e);
-      await alertSyncFailure("stackcollect-unhandled", r, e);
-    });
-    // Forward contact details to the Master Lead Sheet (Airtable). Also
-    // fire-and-forget — Slack must not depend on it.
-    forwardToAirtable(r).catch(async (e) => {
-      console.error("[airtable] unhandled", e);
-      await alertSyncFailure("airtable-unhandled", r, e);
-    });
+    const results = await Promise.allSettled([
+      syncToStackcollect(r),
+      forwardToAirtable(r),
+    ]);
+    for (const [i, res] of results.entries()) {
+      if (res.status === "rejected") {
+        const stage = i === 0 ? "stackcollect-unhandled" : "airtable-unhandled";
+        console.error(`[${stage}]`, res.reason);
+        await alertSyncFailure(stage, r, res.reason);
+      }
+    }
   }
 
   const slackRes = await fetch(SLACK_WEBHOOK_URL, {
