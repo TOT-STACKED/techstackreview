@@ -305,6 +305,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   loyalty:   "Loyalty & CRM",
   learning:  "Learning & Development",
   finance_ops: "Finance & Accounting",
+  guest_feedback: "Guest Feedback",
 };
 
 async function syncToStackcollect(r: any) {

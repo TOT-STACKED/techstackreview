@@ -170,6 +170,19 @@ const FINANCE_OPS = {
   options: ["Sage", "Xero", "QuickBooks", "Tenzo", "Tahola", "Nory", "Accurise", "FreeAgent", "Lightyear", "Independent accountant"],
 };
 
+// Guest Communications & Feedback — same add-on pattern as FINANCE_OPS.
+// Captured with tools + NPS, lands in stack.guest_feedback, flows to Slack +
+// AI review, but deliberately kept out of CATEGORIES so it doesn't shift the
+// score, coverage %, or £ upside model. Label matches the portal's canonical
+// 25-category taxonomy — do not rename without confirming.
+const GUEST_FEEDBACK = {
+  id: "guest_feedback",
+  label: "Guest Feedback",
+  hint: "Guest comms, reviews, sentiment and feedback capture",
+  icon: "💬",
+  options: ["Salt AI", "Sadie", "Revvue", "Feedelity", "Sentiment Search", "HGEM", "Yumpingo", "125 Data"],
+};
+
 // ---------- ROI MODEL ----------
 // Per-site annual savings & weekly hours saved when an operator adopts a tool in this category.
 // Numbers are directional industry benchmarks for a typical UK site doing ~£800k–£1.2m revenue.
@@ -259,6 +272,16 @@ const TOOL_DESCRIPTIONS = {
   "FreeAgent":         "UK cloud accounting for small businesses.",
   "Lightyear":         "AP automation and invoice processing platform.",
   "Independent accountant": "External accountant handling the books manually — common at single sites and small groups.",
+
+  // Guest Communications & Feedback (from GUEST_FEEDBACK)
+  "Salt AI":           "AI-powered guest sentiment and review analysis platform for hospitality.",
+  "Sadie":             "AI review-response and reputation-management tool for hospitality operators.",
+  "Revvue":            "Multi-site review and reputation management platform for hospitality groups.",
+  "Feedelity":         "Guest feedback capture and NPS platform for restaurants and hotels.",
+  "Sentiment Search":  "Guest sentiment analytics across reviews and feedback channels.",
+  "HGEM":              "Mystery diner and guest experience measurement service used by larger UK operators.",
+  "Yumpingo":          "Guest feedback and review platform — alternative to 125 for feedback collection.",
+  "125 Data":          "Sentiment, guest comms and feedback platform commonly used by larger UK hospitality groups.",
 };
 
 // typically claim. Gap savings use the full figure; switching/renegotiation claws
@@ -1497,19 +1520,21 @@ function App() {
   const FIRST_CAT_STEP = 2;
   const LAST_CAT_STEP = FIRST_CAT_STEP + totalCategorySteps - 1;
   const FINANCE_STEP = LAST_CAT_STEP + 1;
-  const COMMS_STEP = FINANCE_STEP + 1;
+  const GUEST_STEP = FINANCE_STEP + 1;
+  const COMMS_STEP = GUEST_STEP + 1;
   const KB_STEP = COMMS_STEP + 1;
   const GATE_STEP = KB_STEP + 1;
   const REPORT_STEP = GATE_STEP + 1;
 
-  // venue + 6 categories + finance/ops + comms + knowledge base + gate
-  const progressTotal = 1 + totalCategorySteps + 1 + 1 + 1 + 1;
+  // venue + 6 categories + finance/ops + guest feedback + comms + knowledge base + gate
+  const progressTotal = 1 + totalCategorySteps + 1 + 1 + 1 + 1 + 1;
   const progressStep = step === 0 ? 0
     : step === VENUE_STEP ? 1
     : step >= FIRST_CAT_STEP && step <= LAST_CAT_STEP ? 1 + (step - FIRST_CAT_STEP + 1)
     : step === FINANCE_STEP ? 1 + totalCategorySteps + 1
-    : step === COMMS_STEP ? 1 + totalCategorySteps + 2
-    : step === KB_STEP ? 1 + totalCategorySteps + 3
+    : step === GUEST_STEP ? 1 + totalCategorySteps + 2
+    : step === COMMS_STEP ? 1 + totalCategorySteps + 3
+    : step === KB_STEP ? 1 + totalCategorySteps + 4
     : step === GATE_STEP ? progressTotal
     : progressTotal;
 
@@ -1601,6 +1626,12 @@ function App() {
     const fo = stack[FINANCE_OPS.id];
     if (fo && !fo.none && ((fo.tools || []).length > 0 || (fo.other || "").trim())) {
       setStep(FINANCE_STEP);
+      return;
+    }
+    // Then check guest feedback — same add-on shape as finance/ops.
+    const gf = stack[GUEST_FEEDBACK.id];
+    if (gf && !gf.none && ((gf.tools || []).length > 0 || (gf.other || "").trim())) {
+      setStep(GUEST_STEP);
       return;
     }
     // No unrated picks anywhere — send them to the first category to add ratings.
@@ -1820,6 +1851,18 @@ function App() {
         onNone: () => toggleNone(FINANCE_OPS.id),
         onOtherChange: (t) => setOther(FINANCE_OPS.id, t),
         onRateTool: (toolKey, score) => rateTool(FINANCE_OPS.id, toolKey, score),
+        onNext: () => setStep(step + 1),
+        onBack: () => setStep(step - 1),
+        canBack: true,
+      }),
+
+      step === GUEST_STEP && h(CategoryStep, {
+        category: GUEST_FEEDBACK,
+        value: stack[GUEST_FEEDBACK.id] || { tools: [], other: "", none: false, nps: {} },
+        onToggle: (t) => toggleTool(GUEST_FEEDBACK.id, t),
+        onNone: () => toggleNone(GUEST_FEEDBACK.id),
+        onOtherChange: (t) => setOther(GUEST_FEEDBACK.id, t),
+        onRateTool: (toolKey, score) => rateTool(GUEST_FEEDBACK.id, toolKey, score),
         onNext: () => setStep(step + 1),
         onBack: () => setStep(step - 1),
         canBack: true,
