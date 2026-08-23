@@ -959,7 +959,12 @@ async function sendReviewEmail(row: any, review: string, structured: StructuredR
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#87013B; border:1px solid rgba(252,144,195,0.14); border-radius:16px; padding:32px; color:#F5F1E4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px; line-height:1.55;">
         <tr><td>
-          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#FC90C3; font-weight:700; margin-bottom:6px;">Stacked · Intelligence Score</div>
+          <!-- Stacked wordmark — text-rendered so it works everywhere, no
+               remote asset load, no SVG stripped. Sized big to feel like a
+               logo, tightened tracking to mimic the chunky Chunko Bold
+               display face. -->
+          <div style="font-family:'Archivo Black','Arial Black','Helvetica Neue',sans-serif; font-weight:900; font-size:42px; color:#E85D3B; letter-spacing:-0.03em; line-height:1; margin:0 0 12px;">STACKED</div>
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#FC90C3; font-weight:700; margin-bottom:22px;">Intelligence Score</div>
           <h1 style="font-family:'Archivo Black','Arial Black',-apple-system,sans-serif; font-weight:900; font-size:28px; color:#FC90C3; margin:0 0 18px; letter-spacing:-0.02em;">${escapeHtml(greeting)}</h1>
           <p style="margin:0 0 18px; line-height:1.55; color:#F5F1E4;">${intro}</p>
           <hr style="border:none; border-top:1px solid rgba(252,144,195,0.14); margin:24px 0;">
