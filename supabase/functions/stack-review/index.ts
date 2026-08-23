@@ -246,10 +246,132 @@ function parseStructuredReview(raw: string): StructuredReview | null {
   return null;
 }
 
+// Render the structured JSON as email-safe HTML with proper pill styling —
+// same shape as the Framer report. Every element uses inline styles and
+// display:inline-block so it survives Gmail / Apple Mail / Outlook web.
+//
+// Called by sendReviewEmail when a structured payload is available; falls
+// back to reviewMarkdownToHtml over the flattened markdown otherwise.
+function structuredToEmailHtml(sr: StructuredReview): string {
+  const parts: string[] = [];
+
+  // Reusable snippets (kept small — Outlook rewrites some CSS heavily).
+  const label = (s: string) =>
+    `<div style="font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#ffcae0; margin:14px 0 6px; font-weight:700;">${escapeHtml(s)}</div>`;
+  const commPill = (n: number, count: number, opScore: number | null, tone: "ok" | "warn" | "default") => {
+    const bg = tone === "warn"
+      ? "rgba(232,93,59,0.24)"
+      : tone === "ok"
+        ? "rgba(178,244,115,0.18)"
+        : "rgba(252,144,195,0.18)";
+    const col = tone === "warn" ? "#ffd0c1" : tone === "ok" ? "#e5ffd8" : "#F5F1E4";
+    const you = opScore != null ? ` <span style="opacity:0.75">· you gave ${opScore}</span>` : "";
+    return `<span style="display:inline-block; background:${bg}; color:${col}; padding:3px 10px; border-radius:999px; font-size:12px; margin-left:8px; vertical-align:2px;"><strong>${n}</strong> across ${count} operators${you}</span>`;
+  };
+  const opPill = (name: string, more = false) => {
+    const bg = more ? "transparent" : "rgba(252,144,195,0.18)";
+    const border = more ? "1px dashed rgba(252,144,195,0.30)" : "1px solid transparent";
+    const col = more ? "#ffcae0" : "#F5F1E4";
+    return `<span style="display:inline-block; background:${bg}; border:${border}; color:${col}; padding:4px 11px; border-radius:999px; font-size:12.5px; margin:3px 4px 3px 0;">${escapeHtml(name)}</span>`;
+  };
+  const escalate = () =>
+    `<div style="background:rgba(232,93,59,0.18); color:#ffd0c1; padding:12px 14px; border-radius:12px; font-size:14px; margin-top:12px; line-height:1.55;">🥣 Your read differs from the community — worth challenging or talking through with us: <a href="mailto:hello@wearestacked.io" style="color:#ffe0d5; text-decoration:underline;">hello@wearestacked.io</a></div>`;
+
+  // --- Main flag hero ---
+  if (sr.main_flag?.title) {
+    const isOpp = sr.main_flag.kind === "opportunity";
+    const flagBg = isOpp
+      ? "linear-gradient(180deg, rgba(178,244,115,0.18) 0%, rgba(178,244,115,0.05) 100%)"
+      : "linear-gradient(180deg, rgba(232,93,59,0.20) 0%, rgba(232,93,59,0.05) 100%)";
+    const flagBorder = isOpp ? "rgba(178,244,115,0.35)" : "rgba(232,93,59,0.35)";
+    const flagLead = isOpp ? "✨ Opportunity" : "🚩 Main flag";
+    parts.push(
+      `<div style="background:${flagBg}; border:1px solid ${flagBorder}; border-radius:18px; padding:22px; margin:8px 0 22px;">` +
+      `<div style="font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:#ffcae0; margin-bottom:8px; font-weight:700;">${flagLead}</div>` +
+      `<div style="font-family:'Archivo Black','Arial Black',sans-serif; font-weight:900; font-size:20px; color:#F5F1E4; line-height:1.2; letter-spacing:-0.01em; margin:0 0 10px;">${escapeHtml(sr.main_flag.title)}</div>` +
+      (sr.main_flag.body
+        ? `<div style="color:#ffcae0; font-size:15px; line-height:1.55; margin:0;">${escapeHtml(sr.main_flag.body)}</div>`
+        : "") +
+      `</div>`,
+    );
+  }
+
+  // --- Sections ---
+  for (const sec of sr.sections ?? []) {
+    if (!sec?.heading) continue;
+    parts.push(
+      `<div style="padding:16px 0 4px; border-top:1px solid rgba(252,144,195,0.14);">` +
+        `<h3 style="font-family:'Archivo Black','Arial Black',sans-serif; font-weight:900; font-size:20px; color:#FC90C3; margin:0 0 10px; letter-spacing:-0.01em;">${escapeHtml(sec.heading)}</h3>`,
+    );
+    if (sec.kind === "prose") {
+      if (sec.body) {
+        parts.push(
+          `<p style="margin:0 0 12px; color:#F5F1E4; line-height:1.6; font-size:15px;">${escapeHtml(sec.body)}</p>`,
+        );
+      }
+    } else {
+      const items = Array.isArray(sec.items) ? sec.items : [];
+      const ordered = sec.kind === "list";
+      items.forEach((it, i) => {
+        const tool = (it.tool || "—").toString();
+        const score = typeof it.operator_score === "number" ? it.operator_score : null;
+        const cAvg = typeof it.community_avg === "number" ? it.community_avg : null;
+        const cCount = typeof it.community_count === "number" ? it.community_count : null;
+        const ops = Array.isArray(it.operator_names) ? it.operator_names : [];
+        const more = typeof it.more_operators === "number" ? it.more_operators : 0;
+        const esc = !!it.escalate;
+
+        const tone: "ok" | "warn" | "default" = esc
+          ? "warn"
+          : score != null && cAvg != null && Math.abs(score - cAvg) < 2
+            ? "ok"
+            : "default";
+
+        // Item card. Uses a subtle top-border between items in the section.
+        parts.push(
+          `<div style="padding:10px 0; ${i === 0 ? "" : "border-top:1px dashed rgba(252,144,195,0.14);"}">` +
+            // Tool + community pill row
+            `<div style="margin-bottom:6px;">` +
+              (ordered ? `<span style="display:inline-block; width:22px; height:22px; border-radius:50%; background:#FC90C3; color:#87013B; font-weight:700; font-size:12px; text-align:center; line-height:22px; margin-right:8px; vertical-align:1px;">${i + 1}</span>` : "") +
+              `<strong style="color:#FC90C3; font-weight:800; font-size:16px;">${escapeHtml(tool)}</strong>` +
+              (cAvg != null && cCount != null ? commPill(cAvg, cCount, score, tone) : "") +
+              (cAvg == null && score != null ? ` <span style="color:#ffcae0; font-size:12px;">you gave ${score}/10</span>` : "") +
+            `</div>`,
+        );
+        if (it.commentary) {
+          parts.push(
+            `<div style="color:#F5F1E4; font-size:14.5px; line-height:1.6; margin:4px 0 6px;">${escapeHtml(it.commentary)}</div>`,
+          );
+        }
+        if (ops.length > 0) {
+          parts.push(label("Also using it"));
+          parts.push(`<div style="line-height:1.9;">${ops.map((n) => opPill(n)).join("")}${more > 0 ? opPill(`+${more} more`, true) : ""}</div>`);
+        }
+        if (esc) parts.push(escalate());
+        parts.push(`</div>`);
+      });
+    }
+    parts.push(`</div>`); // section
+  }
+
+  // --- Next step ---
+  if (sr.next_step?.title) {
+    parts.push(
+      `<div style="margin-top:20px; background:rgba(252,144,195,0.10); border-radius:20px; padding:22px;">` +
+        `<h3 style="font-family:'Archivo Black','Arial Black',sans-serif; font-weight:900; font-size:20px; color:#FC90C3; margin:0 0 10px; letter-spacing:-0.01em;">${escapeHtml(sr.next_step.title)}</h3>` +
+        (sr.next_step.body ? `<p style="margin:0 0 12px; color:#F5F1E4; font-size:15px; line-height:1.6;">${escapeHtml(sr.next_step.body)}</p>` : "") +
+        `<p style="margin:0; color:#ffcae0; font-size:13px;">Or challenge anything you disagreed with: <a href="mailto:hello@wearestacked.io" style="color:#F5F1E4; text-decoration:underline;">hello@wearestacked.io</a></p>` +
+      `</div>`,
+    );
+  }
+  return parts.join("");
+}
+
 // Flatten the structured JSON into a readable markdown string. Used to
-// keep Slack + email + submissions.ai_feedback in the same shape they've
-// always been in — the report screen renders the structured JSON directly
-// for the pretty pills, but every other consumer just wants readable text.
+// keep Slack + submissions.ai_feedback in the same shape they've always
+// been in — the report screen and email render the structured JSON
+// directly for the pretty pills, but every other consumer just wants
+// readable text.
 function structuredToMarkdown(sr: StructuredReview): string {
   const out: string[] = [];
   if (sr.main_flag?.title) {
@@ -731,7 +853,7 @@ serve(async (req) => {
   // Email the review to the operator. The gate form consent line promises
   // this. Best-effort, non-blocking.
   if (RESEND_API_KEY) {
-    sendReviewEmail(row, reviewText).catch((e) =>
+    sendReviewEmail(row, reviewText, structured).catch((e) =>
       console.error("[stack-review] email send threw", e)
     );
   }
@@ -810,7 +932,7 @@ function reviewMarkdownToHtml(md: string): string {
     .join("\n");
 }
 
-async function sendReviewEmail(row: any, review: string) {
+async function sendReviewEmail(row: any, review: string, structured: StructuredReview | null = null) {
   const toEmail = (row.email ?? "").toString().trim();
   if (!toEmail) {
     console.error("[stack-review] email skipped: no email on row");
@@ -822,7 +944,11 @@ async function sendReviewEmail(row: any, review: string) {
   const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
   const intro = `Thanks for completing your Stacked Intelligence Score${company ? ` for ${escapeHtml(company)}` : ""}. Here's what came back — a diagnostic look at where your stack is strong, where the gaps are, and how you compare with the wider Stacked operator base.`;
 
-  const reviewHtml = reviewMarkdownToHtml(review);
+  // Prefer the pill-styled structured renderer when we have JSON; fall back
+  // to the plain-markdown pipeline for cached/legacy paths.
+  const reviewHtml = structured
+    ? structuredToEmailHtml(structured)
+    : reviewMarkdownToHtml(review);
 
   const subject = company
     ? `Your Stacked Intelligence Score — ${company}`
