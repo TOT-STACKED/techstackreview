@@ -1,7 +1,7 @@
 // Supabase Edge Function: stack-review
 //
 // Generates a Claude-written narrative review of a stack submission, using the
-// Tech on Toast Hospitality Tech Review system prompt (sourced from the repo's
+// Stacked Intelligence hospitality tech review system prompt (sourced from the repo's
 // CLAUDE.md, packaged as system-prompt.json for clean string escaping).
 //
 // Flow:
@@ -60,10 +60,13 @@ const ESCALATION_EMAIL = "hello@wearestacked.io";
 const STACKCOLLECT_SUPABASE_URL = Deno.env.get("STACKCOLLECT_SUPABASE_URL");
 const STACKCOLLECT_SUPABASE_KEY = Deno.env.get("STACKCOLLECT_SUPABASE_KEY");
 // Email the AI review to the operator on send. From address is on the
-// verified techontoast.community Resend domain.
+// verified wearestacked.io Resend domain (SPF/DKIM/DMARC set up there).
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_FROM = "Chris at Tech on Toast <chris@techontoast.community>";
-const EMAIL_REPLY_TO = "chris@techontoast.community";
+// Display name reads "Chris at Stacked" but the address is the team inbox
+// (hello@wearestacked.io) so replies route somewhere monitored, not a
+// personal mailbox. Standard pattern — Chris signs it, team catches it.
+const EMAIL_FROM = "Chris at Stacked <hello@wearestacked.io>";
+const EMAIL_REPLY_TO = "hello@wearestacked.io";
 
 const SYSTEM_PROMPT: string = (promptData as { prompt: string }).prompt;
 
@@ -804,27 +807,27 @@ async function sendReviewEmail(row: any, review: string) {
   const company = (row.company ?? "").toString().trim();
 
   const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
-  const intro = `Thanks for completing the Stack Review${company ? ` for ${escapeHtml(company)}` : ""}. Here's what came back — it's a diagnostic look at where your stack is strong, where the gaps are, and the strategic questions sitting under it.`;
+  const intro = `Thanks for completing your Stacked Intelligence Score${company ? ` for ${escapeHtml(company)}` : ""}. Here's what came back — a diagnostic look at where your stack is strong, where the gaps are, and how you compare with the wider Stacked operator base.`;
 
   const reviewHtml = reviewMarkdownToHtml(review);
 
   const subject = company
-    ? `Your Stack Review — ${company}`
-    : "Your Stack Review from Tech on Toast";
+    ? `Your Stacked Intelligence Score — ${company}`
+    : "Your Stacked Intelligence Score";
 
   const html = `<!doctype html><html><body style="margin:0; padding:0; background:#0d1702;">
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0d1702; padding:24px 12px;">
     <tr><td align="center">
       <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#1a2308; border:1px solid #2a3818; border-radius:16px; padding:32px; color:#f5efe0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">
         <tr><td>
-          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#82e914; font-weight:600; margin-bottom:6px;">Tech on Toast — Stack Review</div>
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#82e914; font-weight:600; margin-bottom:6px;">Stacked · Intelligence Score</div>
           <h1 style="font-family:Georgia,serif; font-size:24px; color:#f5efe0; margin:0 0 18px;">${escapeHtml(greeting)}</h1>
           <p style="margin:0 0 18px; line-height:1.55;">${intro}</p>
           <hr style="border:none; border-top:1px solid #2a3818; margin:24px 0;">
           ${reviewHtml}
           <hr style="border:none; border-top:1px solid #2a3818; margin:28px 0;">
           <p style="margin:0 0 6px;">Reply to this email to book a call — I read everything that comes through here personally.</p>
-          <p style="margin:0; color:#cfc8b6;">— Chris<br>Tech on Toast</p>
+          <p style="margin:0; color:#cfc8b6;">— Chris<br>Stacked</p>
         </td></tr>
       </table>
     </td></tr>
@@ -835,7 +838,7 @@ async function sendReviewEmail(row: any, review: string) {
   // don't render HTML (rare, but worth doing).
   const text =
     `${greeting}\n\n${intro.replace(/<[^>]+>/g, "")}\n\n${review}\n\n` +
-    `Reply to this email to book a call — I read everything personally.\n\n— Chris, Tech on Toast`;
+    `Reply to this email to book a call — I read everything personally.\n\n— Chris, Stacked`;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -979,7 +982,7 @@ async function postReviewToSlack(row: any, review: string) {
       type: "header",
       text: {
         type: "plain_text",
-        text: "🤖 Tech on Toast review (Claude)",
+        text: "🤖 Stacked Intelligence review (Claude)",
         emoji: true,
       },
     },
@@ -1003,7 +1006,7 @@ async function postReviewToSlack(row: any, review: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: `Tech on Toast review for ${fullName} at ${company}`,
+      text: `Stacked Intelligence review for ${fullName} at ${company}`,
       blocks,
     }),
   });
