@@ -163,12 +163,18 @@ async function fetchCommunityContext(toolNames: string[]): Promise<CommunityCont
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${MARKETPLACE_AIRTABLE_KEY}` },
     });
+    console.log(`[stack-review] community fetch → HTTP ${res.status} for ${uniq.length} tools: ${uniq.join(", ")}`);
+    console.log(`[stack-review] community fetch URL: ${url}`);
     if (!res.ok) {
-      console.error(`[stack-review] community fetch ${res.status}: ${await res.text().catch(() => "")}`);
+      const errBody = await res.text().catch(() => "");
+      console.error(`[stack-review] community fetch failed: ${errBody}`);
+      // Also stash on the map so debug can see it (hacky but useful)
+      (out as any)._debugError = { status: res.status, body: errBody.slice(0, 500) };
       return out;
     }
     const json = await res.json();
     const records: any[] = Array.isArray(json?.records) ? json.records : [];
+    console.log(`[stack-review] community fetch returned ${records.length} Airtable records`);
     for (const r of records) {
       const name = (r?.fields?.Name || "").toString().trim();
       if (!name) continue;
@@ -634,7 +640,11 @@ serve(async (req) => {
   try {
     const response = await client.messages.create({
       model: "claude-opus-4-7",
-      max_tokens: 3000,
+      // 8000 gives comfortable headroom for the structured JSON — 3000 was
+      // hitting truncation partway through the sections array, which made
+      // parseStructuredReview return null and the email fell back to
+      // rendering the raw JSON as prose.
+      max_tokens: 8000,
       thinking: { type: "adaptive" },
       output_config: { effort: "high" },
       system: [
@@ -739,6 +749,9 @@ serve(async (req) => {
       review: reviewText,
       structured,   // null if parsing failed; renderer falls back to markdown
       cached: false,
+      // Minimal telemetry so we can see coverage without opening logs.
+      community_matched: community.size,
+      community_tools: operatorTools.length,
     }),
     { headers: { ...CORS, "Content-Type": "application/json" } },
   );
@@ -763,7 +776,7 @@ function reviewMarkdownToHtml(md: string): string {
   const renderInline = (text: string) => {
     return escapeHtml(text).replace(
       /\*\*([^*]+)\*\*/g,
-      "<strong style=\"color: #82e914;\">$1</strong>",
+      "<strong style=\"color: #FC90C3;\">$1</strong>",
     );
   };
   return normalized
@@ -775,10 +788,10 @@ function reviewMarkdownToHtml(md: string): string {
         return `<h4 style="font-family: Georgia, serif; font-size: 16px; margin: 18px 0 8px;">${renderInline(first.slice(4))}</h4>`;
       }
       if (first.startsWith("## ")) {
-        return `<h3 style="font-family: Georgia, serif; font-size: 18px; color: #82e914; margin: 22px 0 10px;">${renderInline(first.slice(3))}</h3>`;
+        return `<h3 style="font-family: 'Archivo Black', 'Arial Black', -apple-system, sans-serif; font-size: 18px; font-weight: 900; color: #FC90C3; margin: 22px 0 10px; letter-spacing: -0.01em;">${renderInline(first.slice(3))}</h3>`;
       }
       if (first.startsWith("# ")) {
-        return `<h2 style="font-family: Georgia, serif; font-size: 22px; color: #82e914; margin: 24px 0 12px;">${renderInline(first.slice(2))}</h2>`;
+        return `<h2 style="font-family: 'Archivo Black', 'Arial Black', -apple-system, sans-serif; font-size: 22px; font-weight: 900; color: #FC90C3; margin: 24px 0 12px; letter-spacing: -0.01em;">${renderInline(first.slice(2))}</h2>`;
       }
       if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
         const items = lines
@@ -815,19 +828,19 @@ async function sendReviewEmail(row: any, review: string) {
     ? `Your Stacked Intelligence Score — ${company}`
     : "Your Stacked Intelligence Score";
 
-  const html = `<!doctype html><html><body style="margin:0; padding:0; background:#0d1702;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#0d1702; padding:24px 12px;">
+  const html = `<!doctype html><html><body style="margin:0; padding:0; background:#5C1932;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#5C1932; padding:24px 12px;">
     <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#1a2308; border:1px solid #2a3818; border-radius:16px; padding:32px; color:#f5efe0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="max-width:640px; background:#87013B; border:1px solid rgba(252,144,195,0.14); border-radius:16px; padding:32px; color:#F5F1E4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:15px; line-height:1.55;">
         <tr><td>
-          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#82e914; font-weight:600; margin-bottom:6px;">Stacked · Intelligence Score</div>
-          <h1 style="font-family:Georgia,serif; font-size:24px; color:#f5efe0; margin:0 0 18px;">${escapeHtml(greeting)}</h1>
-          <p style="margin:0 0 18px; line-height:1.55;">${intro}</p>
-          <hr style="border:none; border-top:1px solid #2a3818; margin:24px 0;">
+          <div style="font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:#FC90C3; font-weight:700; margin-bottom:6px;">Stacked · Intelligence Score</div>
+          <h1 style="font-family:'Archivo Black','Arial Black',-apple-system,sans-serif; font-weight:900; font-size:28px; color:#FC90C3; margin:0 0 18px; letter-spacing:-0.02em;">${escapeHtml(greeting)}</h1>
+          <p style="margin:0 0 18px; line-height:1.55; color:#F5F1E4;">${intro}</p>
+          <hr style="border:none; border-top:1px solid rgba(252,144,195,0.14); margin:24px 0;">
           ${reviewHtml}
-          <hr style="border:none; border-top:1px solid #2a3818; margin:28px 0;">
-          <p style="margin:0 0 6px;">Reply to this email to book a call — I read everything that comes through here personally.</p>
-          <p style="margin:0; color:#cfc8b6;">— Chris<br>Stacked</p>
+          <hr style="border:none; border-top:1px solid rgba(252,144,195,0.14); margin:28px 0;">
+          <p style="margin:0 0 6px; color:#F5F1E4;">Reply to this email to book a call — I read everything that comes through here personally.</p>
+          <p style="margin:0; color:#ffcae0;">— Chris<br>Stacked</p>
         </td></tr>
       </table>
     </td></tr>
