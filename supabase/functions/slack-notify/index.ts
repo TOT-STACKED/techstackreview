@@ -5,19 +5,24 @@
 //   - public.deep_reviews  → 🔥  "Sales-qualified Stack Review"        (stage 2)
 //
 // Also (for stage 1 only) forwards the submission into the Tech on Toast
-// "approved reporting" Supabase so the portal's dashboards pick it up.
+// "approved reporting" Supabase so the portal's dashboards pick it up, and
+// into the Master Lead Sheet in Airtable.
+//
+// Both stages now also raise or update a Lead in Zoho CRM via ./zoho.ts.
 //
 // Required env vars (via `supabase secrets set`):
 //   - SLACK_WEBHOOK_URL:        Slack incoming webhook URL
 //   - WEBHOOK_SECRET:           shared secret, presented as `Authorization: Bearer <secret>`
 //   - STACKCOLLECT_SUPABASE_URL (optional): portal Supabase base URL
 //   - STACKCOLLECT_SUPABASE_KEY (optional): portal anon key
+//   - ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET: see zoho.ts
 //
 // Deploy: supabase functions deploy slack-notify --no-verify-jwt
 
 // deno-lint-ignore-file
 // @ts-nocheck — Deno edge runtime.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { upsertLead, SOURCE } from "./zoho.ts";
 
 const SLACK_WEBHOOK_URL          = Deno.env.get("SLACK_WEBHOOK_URL");
 const WEBHOOK_SECRET             = Deno.env.get("WEBHOOK_SECRET");
@@ -80,6 +85,18 @@ const VERTICAL_TO_AIRTABLE: Record<string, string> = {
   bar:   "Bar",
   qsr:   "QSR",
   hotel: "Hotel",
+};
+
+// Same idea for Zoho, whose Vertical picklist has its own wording. Anything
+// unmapped is left blank rather than guessed — a wrong vertical is worse than
+// an empty one.
+const VERTICAL_TO_ZOHO: Record<string, string> = {
+  indie: "Restaurants",
+  group: "Restaurants",
+  bar:   "Pubs and Bars",
+  qsr:   "QSR and Fast Casual",
+  hotel: "Hotels",
+  other: "Other",
 };
 
 // Forward contact details (only) to the Master Lead Sheet in Airtable.
@@ -271,6 +288,73 @@ function buildDeepReviewMessage(r: any) {
       { type: "context", elements: [{ type: "mrkdwn", text: `Submitted ${r.created_at ?? "just now"}` }] },
     ],
   };
+}
+
+// ---- Zoho CRM ----
+//
+// Stage 1 raises the lead with the ROI numbers on it. Stage 2 finds the same
+// person by email, moves them to SQL and leaves the qualification detail as a
+// note — so one operator is one record however many times they come back.
+// Both are best-effort: a CRM wobble must never cost the Slack ping.
+
+async function forwardSubmissionToZoho(r: any) {
+  const gaps = Array.isArray(r.gap_categories) ? r.gap_categories : [];
+  const nps = summarizeNps(r.product_nps);
+  const detail = [
+    `Segment: ${segmentLabel(r.segment)} · ${SIZE_LABEL[r.sites] ?? r.sites ?? "?"}`,
+    r.location ? `Location: ${r.location}` : null,
+    gaps.length ? `Top gap categories: ${gaps.join(", ")}` : "Complete stack, no peer gaps",
+    nps.count ? `Product NPS: ${nps.line.replace(/\*/g, "")}` : null,
+    nps.detractors.length ? `Detractors: ${nps.detractors.join(", ")}` : null,
+  ].filter(Boolean).join("\n");
+
+  const result = await upsertLead({
+    email: r.email,
+    firstName: r.first_name ?? null,
+    lastName: r.last_name ?? null,
+    company: r.company ?? null,
+    phone: r.phone_number ?? null,
+    source: SOURCE.intelligence,
+    vertical: VERTICAL_TO_ZOHO[r.venue_type] ?? null,
+    consent: !!r.consent,
+    annualUpside: Number(r.total_gbp_per_year) || null,
+    score: r.score ?? null,
+    coveragePct: r.coverage_pct ?? null,
+    hoursSavedPerWeek: r.total_hrs_per_week ?? null,
+    message: detail,
+  });
+
+  console.error(`[zoho] stage 1 ${result.action} ${"id" in result ? result.id : result.reason} (${r.email})`);
+}
+
+async function forwardDeepReviewToZoho(r: any) {
+  const growth = [r.growth_goal, r.growth_goal_other].filter(Boolean).join(" · ");
+  const detail = [
+    `Biggest pain: ${painLabel(r.pain_category)}`,
+    `Contract renewal: ${renewalLabel(r.renewal_window)}`,
+    `Annual tech spend: ${spendLabel(r.tech_spend_band)}`,
+    `Decision maker: ${dmLabel(r.decision_maker)}`,
+    growth ? `Top growth goal: ${growth}` : null,
+    `Open to partner intro: ${introLabel(r.open_to_intro).replace(/[^\x20-\x7E]/g, "").trim()}`,
+  ].filter(Boolean).join("\n");
+
+  const result = await upsertLead({
+    email: r.email,
+    firstName: r.first_name ?? null,
+    lastName: r.last_name ?? null,
+    company: r.company ?? null,
+    phone: r.phone_number ?? null,
+    source: SOURCE.intelligence,
+    annualUpside: Number(r.total_gbp_per_year) || null,
+    score: r.score ?? null,
+    // A deep review is by definition sales-qualified, so it is allowed to
+    // move the record forward from MAL.
+    leadStatus: "SQL",
+    noteTitle: `Deep review (sales-qualified) - ${new Date().toISOString().slice(0, 10)}`,
+    message: detail,
+  });
+
+  console.error(`[zoho] deep review ${result.action} ${"id" in result ? result.id : result.reason} (${r.email})`);
 }
 
 // ---- Portal / approved-reporting sync ----
@@ -490,7 +574,7 @@ serve(async (req) => {
     ? buildDeepReviewMessage(r)
     : buildSubmissionMessage(r);
 
-  // Fan-out to the portal's Supabase + Master Lead Sheet on stage 1 submissions.
+  // Fan-out to the portal's Supabase + Master Lead Sheet + Zoho on stage 1.
   //
   // MUST await here (Promise.allSettled so a single failure doesn't cascade).
   // These used to be fire-and-forget for a "fast Slack" win — but Deno Deploy /
@@ -506,13 +590,24 @@ serve(async (req) => {
     const results = await Promise.allSettled([
       syncToStackcollect(r),
       forwardToAirtable(r),
+      forwardSubmissionToZoho(r),
     ]);
+    const stages = ["stackcollect-unhandled", "airtable-unhandled", "zoho-unhandled"];
     for (const [i, res] of results.entries()) {
       if (res.status === "rejected") {
-        const stage = i === 0 ? "stackcollect-unhandled" : "airtable-unhandled";
-        console.error(`[${stage}]`, res.reason);
-        await alertSyncFailure(stage, r, res.reason);
+        console.error(`[${stages[i]}]`, res.reason);
+        await alertSyncFailure(stages[i], r, res.reason);
       }
+    }
+  }
+
+  // Stage 2 has no portal or Airtable leg — it only moves the CRM record on.
+  if (tbl === "deep_reviews") {
+    try {
+      await forwardDeepReviewToZoho(r);
+    } catch (e) {
+      console.error("[zoho-deep-unhandled]", e);
+      await alertSyncFailure("zoho-deep-unhandled", r, e);
     }
   }
 

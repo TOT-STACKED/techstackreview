@@ -13,3 +13,16 @@ verify_jwt = false
 
 [functions.stack-review]
 verify_jwt = false
+
+# Also called without a Supabase JWT, so the same applies:
+#   - contact-notify: browsers posting the Framer contact forms
+#   - luma-notify: Luma's webhook (Standard Webhooks signature, not a JWT)
+#   - marketplace-notify: the Airtable automation script
+[functions.contact-notify]
+verify_jwt = false
+
+[functions.luma-notify]
+verify_jwt = false
+
+[functions.marketplace-notify]
+verify_jwt = false
