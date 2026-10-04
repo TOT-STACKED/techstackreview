@@ -8,21 +8,21 @@
 // "approved reporting" Supabase so the portal's dashboards pick it up, and
 // into the Master Lead Sheet in Airtable.
 //
-// Both stages now also raise or update a Lead in Zoho CRM via ./zoho.ts.
+// Both stages now also raise or update a Lead in Zoho CRM via ../_shared/zoho.ts.
 //
 // Required env vars (via `supabase secrets set`):
 //   - SLACK_WEBHOOK_URL:        Slack incoming webhook URL
 //   - WEBHOOK_SECRET:           shared secret, presented as `Authorization: Bearer <secret>`
 //   - STACKCOLLECT_SUPABASE_URL (optional): portal Supabase base URL
 //   - STACKCOLLECT_SUPABASE_KEY (optional): portal anon key
-//   - ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET: see zoho.ts
+//   - ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET / ZOHO_OWNER_IDS: see ../_shared/zoho.ts
 //
 // Deploy: supabase functions deploy slack-notify --no-verify-jwt
 
 // deno-lint-ignore-file
 // @ts-nocheck — Deno edge runtime.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { upsertLead, SOURCE } from "./zoho.ts";
+import { upsertLead, SOURCE } from "../_shared/zoho.ts";
 
 const SLACK_WEBHOOK_URL          = Deno.env.get("SLACK_WEBHOOK_URL");
 const WEBHOOK_SECRET             = Deno.env.get("WEBHOOK_SECRET");

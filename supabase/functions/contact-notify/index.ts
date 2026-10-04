@@ -13,7 +13,7 @@
  * Secrets:
  *   SLACK_CONTACT_WEBHOOK_URL, STACKED_FORM_TOKEN
  *   AIRTABLE_TOKEN / AIRTABLE_LEADS_BASE / AIRTABLE_LEADS_TABLE (optional)
- *   ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET, optionally ZOHO_OWNER_IDS
+ *   ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET / ZOHO_OWNER_IDS
  *
  * KNOWN ISSUE (unrelated to Zoho): AIRTABLE_LEADS_TABLE defaults to
  * "Master Lead Sheet", which is not a table in that base - its tables are
@@ -33,7 +33,7 @@
  * lost lead.
  */
 
-import { upsertLead, SOURCE, type Source } from "./zoho.ts"
+import { upsertLead, SOURCE, type Source } from "../_shared/zoho.ts"
 
 const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_CONTACT_WEBHOOK_URL") ?? ""
 const FORM_TOKEN = Deno.env.get("STACKED_FORM_TOKEN") ?? ""

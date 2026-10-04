@@ -1,22 +1,42 @@
 /**
  * Shared Zoho CRM connector for Stacked.
  *
- * 2026-10-04: lead creation now goes through Zoho's own /Leads/upsert with
- * duplicate_check_fields rather than search-then-create. The old approach had
- * a race - two requests arriving milliseconds apart both searched, both
- * missed, both inserted. Zoho's upsert matches server-side and atomically.
+ * Imported as "../_shared/zoho.ts" by contact-notify, slack-notify,
+ * luma-notify and marketplace-notify, and bundled into each at deploy time.
+ * Until 2026-10-04 each function carried its own copy and they drifted: only
+ * marketplace-notify had the Contacts fix below, so the other three kept
+ * losing enquiries. Keep it to this one copy.
  *
- * Also added: Enquiry Type is whitelisted against the six valid picklist
- * values. A recruitment form was sending a person's name through, and it
- * landed in the CRM as an enquiry type.
+ * Zoho org is on the EU data centre - accounts.zoho.eu / www.zohoapis.eu.
+ *
+ * Secrets: ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_OWNER_IDS (required,
+ * comma-separated user ids). The refresh token lives in the integration_tokens
+ * table, put there once by the zoho-bootstrap function. Zoho refresh tokens do
+ * not expire unless the Self Client is revoked.
+ *
+ * 2026-10-04: the Contacts pre-check has been REMOVED. It existed to stop a
+ * converted customer being resurrected as a new lead, on the assumption that
+ * Contacts meant converted customers. It does not: the module holds a bulk
+ * import of several thousand hospitality records loaded on 24 September, so
+ * the check was silently turning real enquiries into notes on dormant records
+ * nobody watches - a marketplace enquiry from Pizzarova was swallowed that
+ * way. Every enquiry now creates or updates a Lead.
+ *
+ * Consequence, accepted deliberately: a genuine existing customer who
+ * enquires will appear in the new-business pipeline as a lead.
+ *
+ * Lead creation goes through /Leads/upsert with duplicate_check_fields rather
+ * than search-then-create: the old approach raced and produced 24 duplicate
+ * pairs from Luma in a fortnight.
+ *
+ * Enquiry Type is whitelisted against the six valid picklist values. The
+ * recruitment form was sending a person's name through.
  */
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
 
 const ACCOUNTS = "https://accounts.zoho.eu/oauth/v2/token"
 const API = "https://www.zohoapis.eu/crm/v8"
-
-const DEFAULT_OWNER_ID = "" // redacted from the public repo - set ZOHO_OWNER_IDS
 
 const db = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -31,6 +51,7 @@ export const SOURCE = {
     intelligence: "Field Tech Check",
     service: "SERVICE 2027",
     lumaEvent: "Luma Event",
+    marketplace: "Marketplace Partner",
 } as const
 
 export type Source = (typeof SOURCE)[keyof typeof SOURCE]
@@ -57,8 +78,14 @@ export interface LeadInput {
     score?: number | null
     coveragePct?: number | null
     hoursSavedPerWeek?: number | null
+    /**
+     * Overrides the default MAL on create, and is applied on update too.
+     * Used by the deep review, which is by definition sales-qualified.
+     */
     leadStatus?: string | null
+    /** Title for the note this enquiry leaves on the record. */
     noteTitle?: string | null
+    /** Update an existing lead but never create one (e.g. a Luma refund). */
     noCreate?: boolean
 }
 
@@ -66,10 +93,8 @@ let cached: { token: string; expires: number } | null = null
 
 async function refreshToken(): Promise<string> {
     const { data } = await db
-        .from("integration_tokens")
-        .select("refresh_token")
-        .eq("provider", "zoho")
-        .maybeSingle()
+        .from("integration_tokens").select("refresh_token")
+        .eq("provider", "zoho").maybeSingle()
     if (!data?.refresh_token) {
         throw new Error("No Zoho refresh token stored. Run zoho-bootstrap with a fresh grant code.")
     }
@@ -78,7 +103,6 @@ async function refreshToken(): Promise<string> {
 
 async function accessToken(): Promise<string> {
     if (cached && cached.expires > Date.now()) return cached.token
-
     const refresh = await refreshToken()
     const res = await fetch(ACCOUNTS, {
         method: "POST",
@@ -91,10 +115,9 @@ async function accessToken(): Promise<string> {
         }),
         signal: AbortSignal.timeout(8000),
     })
-
     const json = await res.json()
     if (!json.access_token) throw new Error(`Zoho token refresh failed: ${JSON.stringify(json)}`)
-
+    // Five minutes of headroom so a token never dies mid-request.
     cached = { token: json.access_token, expires: Date.now() + (json.expires_in - 300) * 1000 }
     return cached.token
 }
@@ -112,16 +135,20 @@ async function zoho(path: string, init: RequestInit = {}): Promise<any> {
         })
 
     let res = await call(await accessToken())
-    if (res.status === 401) {
-        cached = null
-        res = await call(await accessToken())
-    }
+    // A 401 means the cached token died early. Drop it and try once more.
+    if (res.status === 401) { cached = null; res = await call(await accessToken()) }
+    // 204 on a search means no match, which is a normal answer here.
     return res.status === 204 ? null : await res.json()
 }
 
+/**
+ * Left side is Zoho's API name as it was actually created, which is not
+ * always the label. Score1 and URL_2 are Zoho's doing: "Score" collided with
+ * the stock Visitor_Score field, and the CV Link field was left named "URL 2".
+ * Renaming the labels later will not change these.
+ */
 function mapFields(input: LeadInput): Record<string, unknown> {
     const f: Record<string, unknown> = {}
-
     if (input.phone) f.Phone = input.phone
     if (input.jobTitle) f.Designation = input.jobTitle
 
@@ -133,18 +160,18 @@ function mapFields(input: LeadInput): Record<string, unknown> {
     if (types.length) f.Enquiry_Type = types
 
     if (input.seniority) f.Seniority = input.seniority
-    if (input.vertical) f.Vertical = [input.vertical]
+    if (input.vertical) f.Vertical = [input.vertical] // multiselect, wants an array
     if (input.consent !== null && input.consent !== undefined) f.Marketing_Consent = input.consent
     if (input.pageUrl) f.Page_URL = input.pageUrl
     if (input.cvUrl) f.URL_2 = input.cvUrl
     if (input.annualUpside != null) f.Annual_Upside = input.annualUpside
     if (input.score != null) f.Score1 = Math.round(input.score)
-    if (input.coveragePct != null) f.Coverage = Math.round(input.coveragePct)
+    if (input.coveragePct != null) f.Coverage = Math.round(input.coveragePct) // 83 means 83%
     if (input.hoursSavedPerWeek != null) f.Hours_Saved_Per_Week = Math.round(input.hoursSavedPerWeek)
-
     return f
 }
 
+/** Zoho rejects a Lead with no Last Name and treats Company as near-mandatory. */
 function names(input: LeadInput) {
     const first = input.firstName?.trim()
     const last = input.lastName?.trim()
@@ -155,18 +182,20 @@ function names(input: LeadInput) {
     }
 }
 
-async function nextOwner(): Promise<string | null> {
-    const ids = (Deno.env.get("ZOHO_OWNER_IDS") ?? DEFAULT_OWNER_ID)
+/**
+ * Round-robin across ZOHO_OWNER_IDS. Cursor survives cold starts. There is no
+ * hardcoded fallback: an unset secret fails the create loudly rather than
+ * quietly assigning leads to whoever the code last named.
+ */
+async function nextOwner(): Promise<string> {
+    const ids = (Deno.env.get("ZOHO_OWNER_IDS") ?? "")
         .split(",").map((s) => s.trim()).filter(Boolean)
-    if (ids.length === 0) return null
+    if (ids.length === 0) throw new Error("ZOHO_OWNER_IDS is not set - cannot assign a lead owner.")
     if (ids.length === 1) return ids[0]
 
     const { data } = await db
-        .from("integration_tokens")
-        .select("owner_cursor")
-        .eq("provider", "zoho")
-        .maybeSingle()
-
+        .from("integration_tokens").select("owner_cursor")
+        .eq("provider", "zoho").maybeSingle()
     const cursor = (data?.owner_cursor ?? 0) % ids.length
     await db.from("integration_tokens").update({ owner_cursor: cursor + 1 }).eq("provider", "zoho")
     return ids[cursor]
@@ -189,7 +218,6 @@ async function addNote(parentId: string, module: string, title: string, body: st
 export type UpsertResult =
     | { action: "created"; id: string }
     | { action: "updated"; id: string }
-    | { action: "noted_on_contact"; id: string }
     | { action: "skipped"; reason: string }
 
 export async function upsertLead(input: LeadInput): Promise<UpsertResult> {
@@ -209,23 +237,21 @@ export async function upsertLead(input: LeadInput): Promise<UpsertResult> {
         input.message ? `\n${input.message}` : null,
     ].filter(Boolean).join("\n")
 
-    // Already converted? Note it on the Contact rather than putting an
-    // existing customer back into new business.
-    const contactHit = await zoho(`/Contacts/search?email=${encodeURIComponent(email)}`)
-    const contact = contactHit?.data?.[0]
-    if (contact) {
-        await addNote(contact.id, "Contacts", noteTitle, noteBody)
-        return { action: "noted_on_contact", id: contact.id }
-    }
-
+    // No Contacts pre-check - see the header. Every enquiry becomes a Lead.
     const leadHit = await zoho(`/Leads/search?email=${encodeURIComponent(email)}`)
     const existing = leadHit?.data?.[0]
 
     if (existing) {
         const payload: Record<string, unknown> = { id: existing.id, ...mapFields(input) }
+
+        // First-touch attribution: never overwrite how they originally arrived.
         if (!existing.Lead_Source) payload.Lead_Source = input.source
+
+        // A deep review qualifies the lead, so its status is allowed to move a
+        // record forward. Nothing else sets this on update.
         if (input.leadStatus) payload.Lead_Status = input.leadStatus
 
+        // Fill in a company only if we are improving on nothing.
         const n = names(input)
         if (!existing.Company || existing.Company === "Not provided") {
             if (n.Company !== "Not provided") payload.Company = n.Company
@@ -239,6 +265,8 @@ export async function upsertLead(input: LeadInput): Promise<UpsertResult> {
 
         await zoho("/Leads", {
             method: "PUT",
+            // Keeps existing multiselect picks instead of replacing them, so a
+            // second enquiry about Events does not erase the first about Tech.
             body: JSON.stringify({ data: [payload], $append_values: { Enquiry_Type: true } }),
         })
         await addNote(existing.id, "Leads", noteTitle, noteBody)
@@ -260,7 +288,7 @@ export async function upsertLead(input: LeadInput): Promise<UpsertResult> {
                 Email: email,
                 Lead_Source: input.source,
                 Lead_Status: input.leadStatus ?? "MAL",
-                ...(owner ? { Owner: { id: owner } } : {}),
+                Owner: { id: owner },
                 ...mapFields(input),
                 ...(input.message ? { Description: input.message.slice(0, 32000) } : {}),
             }],
@@ -273,6 +301,8 @@ export async function upsertLead(input: LeadInput): Promise<UpsertResult> {
     const id = row?.details?.id
     if (!id) throw new Error(`Zoho lead upsert failed: ${JSON.stringify(res)}`)
 
+    // A deep review arriving before any stage-1 lead still deserves its detail
+    // on the record, not just in the Description.
     if (input.noteTitle) await addNote(id, "Leads", noteTitle, noteBody)
 
     // Zoho reports whether it inserted or matched - the only honest way to

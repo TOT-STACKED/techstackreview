@@ -7,10 +7,10 @@
  * All three tiers create a lead - Lite included. Someone already in the CRM
  * is merged into their existing lead by email.
  *
- * Secrets: MARKETPLACE_TOKEN, ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET
+ * Secrets: MARKETPLACE_TOKEN, ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET / ZOHO_OWNER_IDS
  */
 
-import { upsertLead, SOURCE } from "./zoho.ts"
+import { upsertLead, SOURCE } from "../_shared/zoho.ts"
 
 const TOKEN = Deno.env.get("MARKETPLACE_TOKEN") ?? ""
 
