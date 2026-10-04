@@ -393,7 +393,15 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 async function syncToStackcollect(r: any) {
-  if (!STACKCOLLECT_SUPABASE_URL || !STACKCOLLECT_SUPABASE_KEY) return;
+  if (!STACKCOLLECT_SUPABASE_URL || !STACKCOLLECT_SUPABASE_KEY) {
+    // Loud warn instead of a silent early-return — this used to fail silently
+    // and froze the Approved Reporting portal + marketplace tiles at whatever
+    // data existed the moment the env vars went missing (Aug 14 2026 outage).
+    console.warn(
+      `[stackcollect] SKIPPED fan-out: env missing (url=${!!STACKCOLLECT_SUPABASE_URL}, key=${!!STACKCOLLECT_SUPABASE_KEY}) for submission=${r?.id ?? "unknown"}`,
+    );
+    return;
+  }
 
   const headers = {
     apikey: STACKCOLLECT_SUPABASE_KEY,
@@ -447,7 +455,14 @@ async function syncToStackcollect(r: any) {
     }
     const bizRows = await bizRes.json();
     const bizRow = Array.isArray(bizRows) ? bizRows[0] : bizRows;
-    if (!bizRow?.id) return;
+    if (!bizRow?.id) {
+      // Insert succeeded (2xx) but response body has no id — should never
+      // happen with Prefer:return=representation, but log it if it does so
+      // the silent-no-op is visible.
+      console.warn(`[stackcollect] business_submissions insert returned no id for submission=${r?.id ?? "unknown"}, body=${JSON.stringify(bizRows).slice(0, 300)}`);
+      return;
+    }
+    console.log(`[stackcollect] business_submissions inserted portal_id=${bizRow.id} for submission=${r?.id ?? "unknown"} company=${r?.company ?? "-"}`);
 
     const stack = r.stack ?? {};
     const entries: Array<{ submission_id: string; category: string; tool_name: string; nps: number | null }> = [];
