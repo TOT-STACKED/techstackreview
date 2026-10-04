@@ -93,51 +93,98 @@ function resolveName(d: any, email: string): { first: string | null; last: strin
     return nameFromEmail(email)
 }
 
-async function storedSecret(): Promise<string | null> {
+/**
+ * The env var wins over the table. Returns where the secret came from so the
+ * diagnostic log can say which one was actually used - a stale
+ * LUMA_WEBHOOK_SECRET would silently shadow a correct integration_tokens row.
+ */
+async function storedSecret(): Promise<{ secret: string; source: "env" | "db" } | null> {
     const env = Deno.env.get("LUMA_WEBHOOK_SECRET")
-    if (env) return env
+    if (env) return { secret: env, source: "env" }
     const { data } = await db
         .from("integration_tokens")
         .select("refresh_token")
         .eq("provider", "luma")
         .maybeSingle()
-    return data?.refresh_token ?? null
+    return data?.refresh_token ? { secret: data.refresh_token, source: "db" } : null
 }
 
+async function hmac(key: Uint8Array, payload: string): Promise<Uint8Array> {
+    const k = await crypto.subtle.importKey(
+        "raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+    )
+    return new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(payload)))
+}
+
+/**
+ * DIAGNOSTIC (2026-10-04): a live registration logged "signature mismatch"
+ * against a textbook whsec_ secret, so instead of one scheme this tries every
+ * combination of key, payload and encoding below and logs which one matches.
+ * Once a real delivery names the winner, collapse this back to that single
+ * scheme and set LUMA_SIGNATURE_MODE=enforce.
+ *
+ * Logging never includes the secret or a full signature - only the secret's
+ * source and length, and the first 12 characters of signatures on a miss.
+ */
 async function verifySignature(req: Request, raw: string): Promise<string> {
     const id = req.headers.get("webhook-id")
     const ts = req.headers.get("webhook-timestamp")
     const sigHeader = req.headers.get("webhook-signature")
     if (!id || !ts || !sigHeader) return "no signature headers"
 
-    const secret = await storedSecret()
-    if (!secret) return "no stored secret"
-
-    // Standard Webhooks secrets are "whsec_<base64>"; the raw bytes are the key.
-    const b64 = secret.startsWith("whsec_") ? secret.slice(6) : secret
-    let keyBytes: Uint8Array
-    try {
-        keyBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-    } catch {
-        keyBytes = new TextEncoder().encode(secret)
-    }
+    const stored = await storedSecret()
+    if (!stored) return "no stored secret"
+    const { secret, source } = stored
 
     // Rejecting stale deliveries is what makes replay attacks pointless.
     const age = Math.abs(Date.now() / 1000 - Number(ts))
     if (!Number.isFinite(age) || age > 300) return `stale timestamp (${Math.round(age)}s)`
 
-    const key = await crypto.subtle.importKey(
-        "raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-    )
-    const mac = await crypto.subtle.sign(
-        "HMAC", key, new TextEncoder().encode(`${id}.${ts}.${raw}`),
-    )
-    const expected = btoa(String.fromCharCode(...new Uint8Array(mac)))
+    const afterPrefix = secret.startsWith("whsec_") ? secret.slice(6) : secret
+    const keys: Array<[string, Uint8Array | null]> = [
+        // Standard Webhooks: the part after whsec_ is base64 of the raw key bytes.
+        ["b64-decoded", (() => {
+            try { return Uint8Array.from(atob(afterPrefix), (c) => c.charCodeAt(0)) } catch { return null }
+        })()],
+        ["raw-after-prefix", new TextEncoder().encode(afterPrefix)],
+        ["raw-whole", new TextEncoder().encode(secret)],
+    ]
+    const payloads: Array<[string, string]> = [
+        ["id.ts.body", `${id}.${ts}.${raw}`],
+        ["ts.body", `${ts}.${raw}`],
+        ["body", raw],
+    ]
 
     // Header is a space-separated list of "v1,<sig>" - more than one during a
     // secret rotation.
     const offered = sigHeader.split(" ").map((p) => p.split(",").pop() ?? "")
-    return offered.includes(expected) ? "ok" : "mismatch"
+    const offeredLower = offered.map((s) => s.toLowerCase())
+
+    const misses: string[] = []
+    for (const [keyName, key] of keys) {
+        if (!key) { misses.push(`key=${keyName} (not valid base64)`); continue }
+        for (const [payloadName, payload] of payloads) {
+            const mac = await hmac(key, payload)
+            const encodings: Array<[string, string, string[]]> = [
+                ["base64", btoa(String.fromCharCode(...mac)), offered],
+                ["hex", Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join(""), offeredLower],
+            ]
+            for (const [encName, computed, against] of encodings) {
+                const label = `key=${keyName} payload=${payloadName} enc=${encName}`
+                if (against.includes(computed)) {
+                    console.error(`[luma] signature MATCH ${label} (secret=${source} len=${secret.length})`)
+                    return "ok"
+                }
+                misses.push(`${label}:${computed.slice(0, 12)}`)
+            }
+        }
+    }
+
+    console.error(
+        `[luma] signature NO MATCH secret=${source} len=${secret.length} body_bytes=${new TextEncoder().encode(raw).length}` +
+        ` offered=[${offered.map((s) => s.slice(0, 12)).join(" ")}] candidates=[${misses.join(" | ")}]`,
+    )
+    return "mismatch"
 }
 
 /**
