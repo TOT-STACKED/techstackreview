@@ -91,6 +91,24 @@ export interface LeadInput {
 
 let cached: { token: string; expires: number } | null = null
 
+/**
+ * Zoho occasionally sits on a request past our timeout ("Signal timed out."),
+ * which used to fail the whole sync and lose the lead (first seen
+ * 2026-10-08). One retry after a short pause. Only for calls that are safe to
+ * repeat: search, PUT and /Leads/upsert all are; POST /Notes is not, since a
+ * late success plus a retry would leave the note twice.
+ */
+async function withTimeoutRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+        return await fn()
+    } catch (e) {
+        if (!(e instanceof DOMException && e.name === "TimeoutError")) throw e
+        console.error("[zoho] request timed out, retrying once")
+        await new Promise((r) => setTimeout(r, 1000))
+        return await fn()
+    }
+}
+
 async function refreshToken(): Promise<string> {
     const { data } = await db
         .from("integration_tokens").select("refresh_token")
@@ -104,7 +122,7 @@ async function refreshToken(): Promise<string> {
 async function accessToken(): Promise<string> {
     if (cached && cached.expires > Date.now()) return cached.token
     const refresh = await refreshToken()
-    const res = await fetch(ACCOUNTS, {
+    const res = await withTimeoutRetry(() => fetch(ACCOUNTS, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -114,7 +132,7 @@ async function accessToken(): Promise<string> {
             refresh_token: refresh,
         }),
         signal: AbortSignal.timeout(8000),
-    })
+    }))
     const json = await res.json()
     if (!json.access_token) throw new Error(`Zoho token refresh failed: ${JSON.stringify(json)}`)
     // Five minutes of headroom so a token never dies mid-request.
@@ -122,9 +140,9 @@ async function accessToken(): Promise<string> {
     return cached.token
 }
 
-async function zoho(path: string, init: RequestInit = {}): Promise<any> {
-    const call = async (token: string) =>
-        await fetch(`${API}${path}`, {
+async function zoho(path: string, init: RequestInit = {}, retry = true): Promise<any> {
+    const once = (token: string) =>
+        fetch(`${API}${path}`, {
             ...init,
             headers: {
                 ...(init.headers ?? {}),
@@ -133,6 +151,7 @@ async function zoho(path: string, init: RequestInit = {}): Promise<any> {
             },
             signal: AbortSignal.timeout(10000),
         })
+    const call = (token: string) => retry ? withTimeoutRetry(() => once(token)) : once(token)
 
     let res = await call(await accessToken())
     // A 401 means the cached token died early. Drop it and try once more.
@@ -212,7 +231,8 @@ async function addNote(parentId: string, module: string, title: string, body: st
                 se_module: module,
             }],
         }),
-    })
+    }, false) // not idempotent - see withTimeoutRetry
+
 }
 
 export type UpsertResult =
