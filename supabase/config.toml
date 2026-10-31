@@ -26,3 +26,8 @@ verify_jwt = false
 
 [functions.marketplace-notify]
 verify_jwt = false
+
+# field-notify: the pg_net trigger on field_visits, with the WEBHOOK_SECRET
+# bearer (as slack-notify).
+[functions.field-notify]
+verify_jwt = false
